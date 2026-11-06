@@ -18,7 +18,9 @@ def create_server(settings: Settings) -> MCPServer:
             "integers scoped to an account. Omitted account_id uses TELEGRAM_ADS_ACCOUNT_ID "
             "if set, otherwise the token owner. get_current_account always returns the "
             "token owner. Times are Unix seconds; end times are exclusive. Preserve currency. "
-            "List tools fetch one page; follow offsets explicitly."
+            "List tools fetch one page; follow offsets explicitly. "
+            "Use get_ads_stats for per-ad period totals: empty ad_ids selects all ads "
+            "with automatic paging. Check complete and errors for partial failures."
         ),
     )
     runner = TeleAdRunner(settings)

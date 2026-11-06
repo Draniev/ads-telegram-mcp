@@ -86,7 +86,8 @@ class ServerTests(unittest.TestCase):
                     async with ClientSession(read, write) as session:
                         await session.initialize()
                         tools = (await session.list_tools()).tools
-                        self.assertEqual(len(tools), 8)
+                        self.assertEqual(len(tools), 9)
+                        self.assertIn("get_ads_stats", {tool.name for tool in tools})
                         self.assertTrue(all(t.annotations.read_only_hint for t in tools))
                         result = await session.call_tool("get_current_account", {})
                         self.assertTrue(result.is_error)

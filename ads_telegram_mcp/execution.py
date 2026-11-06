@@ -13,6 +13,18 @@ from .config import Settings
 T = TypeVar("T")
 
 
+def public_error_message(error: Exception, token: str) -> str:
+    """Describe a failure without forwarding response bodies or request data."""
+    if isinstance(error, ValidationError):
+        return "TeleAd rejected the parameters; check the tool schema and API limits."
+    if isinstance(error, APIError):
+        code = str(error.code).replace(token, "[redacted]")[:128] if token else str(error.code)[:128]
+        return f"Telegram Ads API: {code} (HTTP {error.status})."
+    if isinstance(error, TransportError):
+        return "Telegram Ads request failed or timed out; retry later."
+    return "Unexpected failure during Telegram Ads operation."
+
+
 class TeleAdRunner:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
@@ -42,14 +54,5 @@ class TeleAdRunner:
         except ToolError:
             # A composed operation may deliberately report a domain error.
             raise
-        except ValidationError:
-            raise ToolError("TeleAd rejected the parameters; check the tool schema and API limits.") from None
-        except APIError as error:
-            # Do not forward response bodies, descriptions or transport messages:
-            # they may contain request data. Preserve the API's machine error code.
-            code = str(error.code).replace(self.settings.token, "[redacted]")[:128]
-            raise ToolError(f"Telegram Ads API: {code} (HTTP {error.status}).") from None
-        except TransportError:
-            raise ToolError("Telegram Ads request failed or timed out; retry later.") from None
-        except Exception:
-            raise ToolError("Unexpected failure during Telegram Ads operation.") from None
+        except Exception as error:
+            raise ToolError(public_error_message(error, self.settings.token)) from None
