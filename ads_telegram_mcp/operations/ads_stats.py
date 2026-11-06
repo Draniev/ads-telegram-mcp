@@ -51,7 +51,7 @@ class AdStatsFailure:
 
 @dataclass
 class AdsStatsBatch:
-    """Results and individual failures for a set of unique ad IDs."""
+    """Results and individual failures for a list of ad IDs."""
 
     total_count: int
     ads: list[AdStats] = field(default_factory=list)
@@ -60,17 +60,17 @@ class AdsStatsBatch:
 
 def _all_ad_ids(client: Client, account_id: str | None) -> list[int]:
     """Load all ad IDs, raising AdsPaginationError if pagination stalls."""
-    ids: dict[int, None] = {}
+    ids: list[int] = []
     offset: str | None = None
     seen_offsets: set[str] = set()
     while True:
         page = client.get_ads_list(
             account_id=account_id, offset=offset, limit=100, return_target=False,
         )
-        ids.update((ad.ad_id, None) for ad in page.ads)
+        ids.extend(ad.ad_id for ad in page.ads)
         offset = page.next_offset
         if not offset:
-            return list(ids)
+            return ids
         if not page.ads or offset in seen_offsets:
             raise AdsPaginationError(
                 "Cannot get all ads: the API returned an empty page with a next cursor "
@@ -108,14 +108,14 @@ def collect_ads_stats(
 ) -> AdsStatsBatch:
     """Collect per-ad statistics using the caller's open client.
 
-    Empty or omitted ad_ids loads all ads. Duplicate IDs are processed once.
+    Empty or omitted ad_ids loads all ads. Provided IDs are used as supplied.
     Individual API and transport failures are retained in the result;
     authentication, permission and rate-limit failures stop the operation.
 
     Preserve interval rows only when include_timeseries is true.
     The caller must supply a validated, interval-aligned period.
     """
-    ids = list(dict.fromkeys(ad_ids)) if ad_ids else _all_ad_ids(client, account_id)
+    ids = ad_ids if ad_ids else _all_ad_ids(client, account_id)
     batch = AdsStatsBatch(total_count=len(ids))
     for ad_id in ids:
         try:

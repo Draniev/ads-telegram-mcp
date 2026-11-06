@@ -35,7 +35,7 @@ def register(server: MCPServer, runner: TeleAdRunner) -> None:
         The period must not exceed 1000 intervals.
 
         Empty or omitted ad_ids selects all ads via automatic paging,
-        regardless of status. Duplicate IDs are processed once.
+        regardless of status. Provided ad_ids are used as supplied.
         Set include_timeseries to include interval rows.
 
         Returns rounded bounds, per-ad totals, counts, complete and errors.

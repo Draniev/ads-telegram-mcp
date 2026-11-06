@@ -47,15 +47,16 @@ class AdsStatsTests(unittest.TestCase):
         result = anyio.run(self.server.call_tool, "get_ads_stats", args)
         return result.structured_content
 
-    def test_selected_ids_skip_listing_deduplicate_and_sum_with_one_session(self) -> None:
+    def test_selected_ids_preserve_input_and_sum_with_one_session(self) -> None:
         self.route = lambda method, params: {"ok": True, "result": [point(0.1), point(0.2)]}
         result = self.call(ad_ids=[7, 8, 7], account_id="explicit")
-        self.assertEqual([call[1] for call in self.requests], ["getAdStats", "getAdStats"])
-        self.assertEqual([call[2]["ad_id"] for call in self.requests], [7, 8])
+        self.assertEqual([call[1] for call in self.requests], ["getAdStats"] * 3)
+        self.assertEqual([call[2]["ad_id"] for call in self.requests], [7, 8, 7])
+        self.assertEqual([row["ad_id"] for row in result["ads"]], [7, 8, 7])
         self.assertEqual({id(call[0]) for call in self.requests}, {id(self.requests[0][0])})
         self.assertTrue(all(call[2]["account_id"] == "explicit" for call in self.requests))
-        self.assertEqual(result["total_count"], 2)
-        self.assertEqual(result["succeeded_count"], 2)
+        self.assertEqual(result["total_count"], 3)
+        self.assertEqual(result["succeeded_count"], 3)
         self.assertTrue(result["complete"])
         self.assertEqual(result["errors"], [])
         self.assertEqual(result["ads"][0]["totals"], {
@@ -82,11 +83,11 @@ class AdsStatsTests(unittest.TestCase):
             with self.subTest(arguments=arguments):
                 self.requests.clear()
                 result = self.call(**arguments)
-                self.assertEqual([row["ad_id"] for row in result["ads"]], [1, 2, 3])
-                self.assertEqual(result["total_count"], 3)
+                self.assertEqual([row["ad_id"] for row in result["ads"]], [1, 2, 2, 3])
+                self.assertEqual(result["total_count"], 4)
                 self.assertTrue(result["complete"])
                 self.assertEqual([call[1] for call in self.requests],
-                                 ["getAdsList", "getAdsList", "getAdStats", "getAdStats", "getAdStats"])
+                                 ["getAdsList", "getAdsList"] + ["getAdStats"] * 4)
                 self.assertEqual(self.requests[1][2]["offset"], "opaque:+/==")
                 self.assertEqual(self.requests[0][2]["limit"], 100)
                 self.assertTrue(all(call[2]["account_id"] == "default-related" for call in self.requests))
