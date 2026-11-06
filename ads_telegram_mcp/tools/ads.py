@@ -1,4 +1,4 @@
-"""Advertisement discovery; mutations can be added as separate tools."""
+"""Read-only advertisement discovery tools."""
 
 from typing import Annotated, Any
 
@@ -17,7 +17,15 @@ def register(server: MCPServer, runner: TeleAdRunner) -> None:
         limit: PageSize = 20,
         return_target: bool = False,
     ) -> dict[str, Any]:
-        """Get one page of ads. Reuse next_offset verbatim; no automatic paging. Omitted account_id uses env default or token owner."""
+        """Get one page of ads from an account.
+
+        For the next page, pass the returned next_offset unchanged as offset.
+        This tool does not load additional pages automatically.
+        Set return_target to include targeting settings.
+
+        Omitted account_id uses TELEGRAM_ADS_ACCOUNT_ID if set,
+        otherwise the token owner's account.
+        """
         page = await runner.run(
             lambda client: client.get_ads_list(
                 account_id=account_id, offset=offset,
@@ -32,7 +40,14 @@ def register(server: MCPServer, runner: TeleAdRunner) -> None:
         account_id: AccountID | None = None,
         return_target: bool = False,
     ) -> dict[str, Any]:
-        """Get selected ads (up to 100); IDs are unique within an account. Set return_target for targeting details. Omitted account_id uses env default or token owner."""
+        """Get selected ads by their IDs.
+
+        Accepts 1 to 100 IDs. Ad IDs are unique within an account.
+        Set return_target to include targeting settings.
+
+        Omitted account_id uses TELEGRAM_ADS_ACCOUNT_ID if set,
+        otherwise the token owner's account.
+        """
         ads = await runner.run(
             lambda client: client.get_ads_by_id(
                 ad_ids, account_id=account_id, return_target=return_target,

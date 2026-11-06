@@ -83,7 +83,10 @@ from .common import READ_ONLY
 def register(server: MCPServer, runner: TeleAdRunner) -> None:
     @server.tool(annotations=READ_ONLY)
     async def list_active_ads() -> dict:
-        """Get active ads from the first 20 ads of the token owner's account."""
+        """Get active ads from the token owner's account.
+
+        Only the first 20 ads are inspected.
+        """
         def load(client: Client) -> list[Ad]:
             account = client.get_current_account()
             page = client.get_ads_list(account_id=account.account_id, limit=20)

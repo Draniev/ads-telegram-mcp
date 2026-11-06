@@ -89,7 +89,15 @@ def register(server: MCPServer, runner: TeleAdRunner) -> None:
         from_time: Timestamp, to_time: Timestamp,
         interval: Interval = 86400, account_id: AccountID | None = None,
     ) -> dict[str, Any]:
-        """Get account time series in [from_time, to_time), Unix seconds. API rounds to interval starts; max 1000 intervals. Money uses returned currency. Omitted account_id uses env default or token owner."""
+        """Get account statistics for [from_time, to_time), in Unix seconds.
+
+        Returns a time series in intervals of 300 or 86400 seconds.
+        The API rounds bounds to interval starts; at most 1000 intervals
+        are allowed. Monetary values use the returned currency.
+
+        Omitted account_id uses TELEGRAM_ADS_ACCOUNT_ID if set,
+        otherwise the token owner's account.
+        """
         validate_period(from_time, to_time, interval)
         stats = await runner.run(
             lambda client: client.get_account_stats(
@@ -103,7 +111,15 @@ def register(server: MCPServer, runner: TeleAdRunner) -> None:
         ad_id: int, from_time: Timestamp, to_time: Timestamp,
         interval: Interval = 86400, account_id: AccountID | None = None,
     ) -> dict[str, Any]:
-        """Get one ad's time series in [from_time, to_time), Unix seconds. API rounds to interval starts; max 1000 intervals. Omitted account_id uses env default or token owner."""
+        """Get one ad's statistics for [from_time, to_time), in Unix seconds.
+
+        Returns a time series in intervals of 300 or 86400 seconds.
+        The API rounds bounds to interval starts; at most 1000 intervals
+        are allowed. The ad ID is scoped to the selected account.
+
+        Omitted account_id uses TELEGRAM_ADS_ACCOUNT_ID if set,
+        otherwise the token owner's account.
+        """
         validate_period(from_time, to_time, interval)
         stats = await runner.run(
             lambda client: client.get_ad_stats(
@@ -118,7 +134,14 @@ def register(server: MCPServer, runner: TeleAdRunner) -> None:
         month: Annotated[int, Field(ge=1, le=12)],
         account_id: AccountID | None = None,
     ) -> dict[str, Any]:
-        """Get monthly totals per active ad; monetary values use each item's currency. Omitted account_id uses env default or token owner."""
+        """Get per-ad totals for a calendar month.
+
+        Returns a report of active ads for the given year and month.
+        Monetary values use each item's currency.
+
+        Omitted account_id uses TELEGRAM_ADS_ACCOUNT_ID if set,
+        otherwise the token owner's account.
+        """
         report = await runner.run(
             lambda client: client.get_account_report(year, month, account_id=account_id)
         )

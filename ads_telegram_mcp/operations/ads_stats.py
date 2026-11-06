@@ -21,6 +21,8 @@ class AdsPaginationError(Exception):
 
 @dataclass(frozen=True)
 class AdTotals:
+    """Period totals in a single currency, with decimal spending arithmetic."""
+
     currency: str | None
     views: int
     opens: int
@@ -31,6 +33,8 @@ class AdTotals:
 
 @dataclass(frozen=True)
 class AdStats:
+    """One ad's totals and optional original interval rows."""
+
     ad_id: int
     data_points: int
     totals: AdTotals | None
@@ -39,18 +43,23 @@ class AdStats:
 
 @dataclass(frozen=True)
 class AdStatsFailure:
+    """An ad-specific failure retained for safe reporting at the MCP boundary."""
+
     ad_id: int
     error: TeleadError
 
 
 @dataclass
 class AdsStatsBatch:
+    """Results and individual failures for a set of unique ad IDs."""
+
     total_count: int
     ads: list[AdStats] = field(default_factory=list)
     errors: list[AdStatsFailure] = field(default_factory=list)
 
 
 def _all_ad_ids(client: Client, account_id: str | None) -> list[int]:
+    """Load all ad IDs, raising AdsPaginationError if pagination stalls."""
     ids: dict[int, None] = {}
     offset: str | None = None
     seen_offsets: set[str] = set()
@@ -71,6 +80,7 @@ def _all_ad_ids(client: Client, account_id: str | None) -> list[int]:
 
 
 def _totals(points: list[AdStatItem]) -> AdTotals | None:
+    """Sum one ad's interval rows; return None when no data was returned."""
     if not points:
         return None
     currencies = {point.currency for point in points}
@@ -96,6 +106,15 @@ def collect_ads_stats(
     account_id: str | None = None,
     include_timeseries: bool = False,
 ) -> AdsStatsBatch:
+    """Collect per-ad statistics using the caller's open client.
+
+    Empty or omitted ad_ids loads all ads. Duplicate IDs are processed once.
+    Individual API and transport failures are retained in the result;
+    authentication, permission and rate-limit failures stop the operation.
+
+    Preserve interval rows only when include_timeseries is true.
+    The caller must supply a validated, interval-aligned period.
+    """
     ids = list(dict.fromkeys(ad_ids)) if ad_ids else _all_ad_ids(client, account_id)
     batch = AdsStatsBatch(total_count=len(ids))
     for ad_id in ids:

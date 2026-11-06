@@ -15,10 +15,12 @@ def create_server(settings: Settings) -> MCPServer:
         log_level="WARNING",
         instructions=(
             "Read-only Telegram Ads API tools. Account IDs are strings; ad IDs are "
-            "integers scoped to an account. Omitted account_id uses TELEGRAM_ADS_ACCOUNT_ID "
+            "integers scoped to an account.\n\n"
+            "Omitted account_id uses TELEGRAM_ADS_ACCOUNT_ID "
             "if set, otherwise the token owner. get_current_account always returns the "
-            "token owner. Times are Unix seconds; end times are exclusive. Preserve currency. "
-            "List tools fetch one page; follow offsets explicitly. "
+            "token owner.\n\n"
+            "Times are Unix seconds; end times are exclusive. Preserve currency.\n\n"
+            "List tools fetch one page; follow offsets explicitly.\n\n"
             "Use get_ads_stats for per-ad period totals: empty ad_ids selects all ads "
             "with automatic paging. Check complete and errors for partial failures."
         ),

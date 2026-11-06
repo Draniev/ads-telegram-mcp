@@ -1,4 +1,4 @@
-"""Compatibility entry point for uv's initial application layout."""
+"""Run the Telegram Ads MCP server over stdio."""
 
 from ads_telegram_mcp.server import main
 
