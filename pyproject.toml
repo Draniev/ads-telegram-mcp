@@ -3,6 +3,7 @@ name = "ads-telegram-mcp"
 version = "0.1.0"
 description = "Modular read-only Telegram Ads MCP server over stdio"
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.15"
 dependencies = [
     "anyio>=4.16.0,<5",

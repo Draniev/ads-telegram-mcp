@@ -177,3 +177,7 @@ HTTP в проверках подменён; subprocess stdio запускает
 Источники: [Telegram Ads API](https://ads.telegram.org/docs/api),
 [TeleAd](https://github.com/Elimeshi1/TeleAd),
 [официальный MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk).
+
+## Лицензия
+
+[MIT](LICENSE). Copyright (c) 2026 Sergei Popov.
