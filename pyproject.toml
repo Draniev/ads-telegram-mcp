@@ -1,0 +1,13 @@
+[project]
+name = "ads-telegram-mcp"
+version = "0.1.0"
+description = "Modular read-only Telegram Ads MCP server over stdio"
+readme = "README.md"
+requires-python = ">=3.15"
+dependencies = [
+    "anyio>=4.16.0,<5",
+    "mcp>=2.3.0,<3",
+    "pydantic>=2.14.3,<3",
+    "pydantic-settings>=2,<3",
+    "telead==0.1.1",
+]
