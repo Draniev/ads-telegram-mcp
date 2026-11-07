@@ -226,15 +226,15 @@ MCP и скачивание по произвольному URL не требу�
 Справочники языков, тем и стран уже доступны через `get_targeting_options`,
 поиск локаций — через `get_target_locations`, а получение каналов
 и ботов — через `get_target_channel` и `get_target_bot`. Остальные операции
-из таблицы остаются направлениями дальнейшего расширения:
+из таблицы доступны отдельными инструментами управления одним объявлением:
 
-| Сценарий | Методы Telegram Ads API |
-|---|---|
-| Получение справочников таргетинга | `getTargetLanguagesList`, `getTargetTopicsList`, `getTargetCountriesList`, `getTargetLocationsList` |
-| Разрешение username и получение сведений о площадке | `getTargetChannel`, `getTargetBot` |
-| Пополнение созданного объявления | `increaseAdBudget` |
-| Редактирование и снятие паузы | `editAd` |
-| Явная отправка на модерацию | `submitAdForReview`, только для статуса `ready_for_review` |
+| Сценарий | MCP-инструмент | Методы Telegram Ads API |
+|---|---|---|
+| Получение справочников таргетинга | `get_targeting_options`, `get_target_locations` | `getTargetLanguagesList`, `getTargetTopicsList`, `getTargetCountriesList`, `getTargetLocationsList` |
+| Разрешение username и получение сведений о площадке | `get_target_channel`, `get_target_bot` | `getTargetChannel`, `getTargetBot` |
+| Пополнение созданного объявления | `increase_ad_budget` | `increaseAdBudget` |
+| Редактирование и снятие паузы | `edit_ad` | `editAd` |
+| Явная отправка на модерацию | `submit_ad_for_review` | `submitAdForReview`, только для статуса `ready_for_review` |
 
 В `create_ads` нет обязательного вызова `submitAdForReview` после создания:
 он применим не ко всем состояниям и может быть избыточен после автоматической отправки.

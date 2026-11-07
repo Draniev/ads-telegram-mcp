@@ -86,16 +86,20 @@ class ServerTests(unittest.TestCase):
                     async with ClientSession(read, write) as session:
                         await session.initialize()
                         tools = (await session.list_tools()).tools
-                        self.assertEqual(len(tools), 15)
+                        self.assertEqual(len(tools), 18)
                         self.assertIn("get_ads_stats", {tool.name for tool in tools})
                         self.assertTrue({
                             "get_targeting_options", "get_target_locations",
                             "get_target_channel", "get_target_bot",
+                            "increase_ad_budget", "edit_ad", "submit_ad_for_review",
                         }.issubset({tool.name for tool in tools}))
                         for tool in tools:
                             self.assertEqual(
                                 tool.annotations.read_only_hint,
-                                tool.name not in {"create_ads", "upload_media"},
+                                tool.name not in {
+                                    "create_ads", "upload_media", "increase_ad_budget",
+                                    "edit_ad", "submit_ad_for_review",
+                                },
                             )
                         result = await session.call_tool("get_current_account", {})
                         self.assertTrue(result.is_error)

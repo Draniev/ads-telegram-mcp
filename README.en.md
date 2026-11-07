@@ -4,10 +4,11 @@ English | [Русский](README.md)
 
 An MCP server for working with Telegram Ads from AI assistants.
 Browse accounts and ads, query statistics, get monthly reports,
-choose targeting options, create ads and upload media.
+choose targeting options, create and edit ads, top up their budgets,
+submit them for review and upload media.
 
-The server runs locally over **stdio**. It provides **15 tools**:
-13 for reading data and 2 for creating ads and uploading media.
+The server runs locally over **stdio**. It provides **18 tools**:
+13 for reading data and 5 for changing ads and budgets and uploading media.
 
 ## Installation
 
@@ -118,6 +119,8 @@ Once connected, ask your assistant, for example:
 - "Upload a photo and create a paused ad with it and no budget."
 - "Find the Travel topic ID and the Istanbul location in Turkey for targeting."
 - "Get the ID and name of the channel @example_placement."
+- "Resume ad 42."
+- "Add 5 units of the account currency to ad 42's budget."
 
 The assistant selects the tools and supplies their parameters.
 Data access depends on the API token's permissions.
@@ -140,6 +143,9 @@ Data access depends on the API token's permissions.
 | `get_target_channel` | A channel's ID and available details by username or numeric ID. |
 | `get_target_bot` | A bot's ID and available details by username or numeric ID. |
 | `create_ads` | Results of creating one or more ads, or local validation with `dry_run`. |
+| `increase_ad_budget` | The result of transferring funds from the account to one ad's budget. |
+| `edit_ad` | The result of changing the supplied fields of one ad, including pause or resume. |
+| `submit_ad_for_review` | The result of explicitly submitting one ad for moderation. |
 | `upload_media` | The uploaded ad photo, video or website image ID and validated file metadata. |
 
 ### Targeting catalogues
@@ -270,6 +276,83 @@ When retrying, keep the same `idempotency_key` and all ad parameters.
 Telegram retains the result for a key for up to 24 hours. After that,
 the same request may create another ad. The server preserves item order,
 repeated keys and duplicate ads. Use `get_ads_by_id` for additional details.
+
+### Managing an existing ad
+
+`increase_ad_budget`, `edit_ad` and `submit_ad_for_review` operate on one
+`ad_id` per call. There is no batch processing. All three accept an optional
+`account_id` using the configuration rules above, and `return_target=false`.
+Set `return_target=true` to include targeting in the returned ad.
+
+`increase_ad_budget` transfers funds from the account to an ad's budget.
+`amount` is a positive **increment**, not the desired final balance,
+in the selected account's currency. A stable `idempotency_key` is required:
+
+```json
+{
+  "ad_id": 42,
+  "amount": 5,
+  "idempotency_key": "4fb8ee23-9d37-4529-b9ec-cb0ec4d71ae3"
+}
+```
+
+When retrying within 24 hours, keep the same key and all parameters.
+A new key or a retry after that period may transfer funds again.
+The pause state is unchanged; funding may resume delivery if other conditions
+allow. The tool does not make a separate review-submission call.
+
+`edit_ad` accepts a nonempty `changes` object. Only supplied, non-null fields
+are changed; omitted fields and `null` are ignored. To resume an ad:
+
+```json
+{"ad_id": 42, "changes": {"is_paused": false}}
+```
+
+To change the bid and daily limit:
+
+```json
+{"ad_id": 42, "changes": {"cpm": 0.5, "daily_budget_limit": 10}}
+```
+
+You can change the title, text, URL, CPM, media, website settings, frequency,
+daily limit, pause state, dates and schedule. Targeting and placement cannot
+be changed with this method. Individual fields have these effects:
+
+- `is_paused=true` pauses delivery; `false` resumes it and may enable spending.
+  Changing the pause state clears activation and deactivation dates; if new dates
+  are supplied, they take precedence over `is_paused` according to API rules.
+- `daily_budget_limit=0` removes the daily limit; `schedule=false` removes the schedule.
+- A new `photo_id` or `video_id` replaces existing media.
+- `conversion_event_id` can only be set while it is unset;
+  `additional_info` also cannot be changed once set.
+- Editing a funded ad may trigger review. The API checks compatibility
+  with the ad's current state.
+
+`submit_ad_for_review` explicitly submits an ad with status `ready_for_review`
+for moderation:
+
+```json
+{"ad_id": 42}
+```
+
+Creating or editing a funded ad may already submit it for review automatically;
+the extra call is only needed for the appropriate status. The tool does not
+add budget or change the pause state. After approval, the ad may start running
+if other conditions allow.
+
+All three tools return `account_id`, `ad_id`, `currency`, `outcome` and the original
+`ad` object on success, or a safe `error` description. Budget top-ups also return
+`idempotency_key`. The possible `outcome` values are:
+
+- `succeeded`: a successful API response was received;
+- `failed`: the API or client rejected the request;
+- `unknown`: the write outcome is unconfirmed, for example because the response was lost.
+
+For `unknown`, inspect the ad with `get_ads_by_id` before further actions.
+For top-ups, preserve the original key and parameters; do not create a new key
+to retry an uncertain request. Editing and review submission have no key:
+check the current fields or status first. Invalid input and account-lookup
+errors are returned as tool errors before any write.
 
 ### Uploading media
 
