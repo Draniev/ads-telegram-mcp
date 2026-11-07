@@ -86,12 +86,29 @@ class ServerTests(unittest.TestCase):
                     async with ClientSession(read, write) as session:
                         await session.initialize()
                         tools = (await session.list_tools()).tools
-                        self.assertEqual(len(tools), 9)
+                        self.assertEqual(len(tools), 11)
                         self.assertIn("get_ads_stats", {tool.name for tool in tools})
-                        self.assertTrue(all(t.annotations.read_only_hint for t in tools))
+                        for tool in tools:
+                            self.assertEqual(
+                                tool.annotations.read_only_hint,
+                                tool.name not in {"create_ads", "upload_media"},
+                            )
                         result = await session.call_tool("get_current_account", {})
                         self.assertTrue(result.is_error)
                         self.assertIn("TELEGRAM_ADS_TOKEN", result.content[0].text)
+                        preview = await session.call_tool("create_ads", {
+                            "dry_run": True,
+                            "ads": [{
+                                "title": "Preview", "text": "Example",
+                                "promote_url": "https://t.me/example", "cpm": 0.3,
+                                "placement": "channel_post",
+                                "target": {"type": "channels", "channel_ids": ["@example"]},
+                                "idempotency_key": "offline-preview",
+                            }],
+                        })
+                        self.assertFalse(preview.is_error)
+                        self.assertEqual(preview.structured_content["validated_count"], 1)
+                        self.assertTrue(preview.structured_content["ads"][0]["is_paused"])
 
         anyio.run(check)
 

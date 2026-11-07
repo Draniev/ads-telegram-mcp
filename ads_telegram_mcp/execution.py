@@ -9,17 +9,25 @@ from telead import Client
 from telead.errors import APIError, TransportError, ValidationError
 
 from .config import Settings
+from .errors import OperationError
 
 T = TypeVar("T")
 
 
+def api_error_code(error: APIError, token: str) -> str:
+    """Return a bounded API code with any occurrence of the token redacted."""
+    code = str(error.code)
+    return (code.replace(token, "[redacted]") if token else code)[:128]
+
+
 def public_error_message(error: Exception, token: str) -> str:
     """Describe a failure without forwarding response bodies or request data."""
+    if isinstance(error, OperationError):
+        return str(error)
     if isinstance(error, ValidationError):
         return "TeleAd rejected the parameters; check the tool schema and API limits."
     if isinstance(error, APIError):
-        code = str(error.code).replace(token, "[redacted]")[:128] if token else str(error.code)[:128]
-        return f"Telegram Ads API: {code} (HTTP {error.status})."
+        return f"Telegram Ads API: {api_error_code(error, token)} (HTTP {error.status})."
     if isinstance(error, TransportError):
         return "Telegram Ads request failed or timed out; retry later."
     return "Unexpected failure during Telegram Ads operation."

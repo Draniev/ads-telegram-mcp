@@ -14,7 +14,11 @@ def create_server(settings: Settings) -> MCPServer:
         version=__version__,
         log_level="WARNING",
         instructions=(
-            "Read-only Telegram Ads API tools. Account IDs are strings; ad IDs are "
+            "Telegram Ads tools for reading data, creating ads and uploading media. "
+            "create_ads writes data unless dry_run=true; upload_media sends a local file. "
+            "Creation may transfer budget, trigger review and enable delivery. "
+            "Preserve per-ad idempotency keys when retrying within 24 hours.\n\n"
+            "Account IDs are strings; ad IDs are "
             "integers scoped to an account.\n\n"
             "Omitted account_id uses TELEGRAM_ADS_ACCOUNT_ID "
             "if set, otherwise the token owner. get_current_account always returns the "

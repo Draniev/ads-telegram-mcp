@@ -1,13 +1,14 @@
 [project]
 name = "ads-telegram-mcp"
 version = "0.1.0"
-description = "Modular read-only Telegram Ads MCP server over stdio"
+description = "Telegram Ads MCP server for reporting, ad creation and media uploads"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.15"
 dependencies = [
     "anyio>=4.16.0,<5",
     "mcp>=2.3.0,<3",
+    "pillow>=13,<14",
     "pydantic>=2.14.3,<3",
     "pydantic-settings>=2,<3",
     "telead==0.1.1",
