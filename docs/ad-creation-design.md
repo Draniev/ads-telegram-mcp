@@ -236,6 +236,7 @@ MCP и скачивание по произвольному URL не требу�
 | Получение справочников таргетинга | `get_targeting_options`, `get_target_locations` | `getTargetLanguagesList`, `getTargetTopicsList`, `getTargetCountriesList`, `getTargetLocationsList` |
 | Разрешение username и получение сведений о площадке | `get_target_channel`, `get_target_bot` | `getTargetChannel`, `getTargetBot` |
 | Пополнение созданного объявления | `increase_ad_budget` | `increaseAdBudget` |
+| Возврат бюджета на баланс аккаунта | `decrease_ad_budget` | `decreaseAdBudget` |
 | Редактирование и снятие паузы | `edit_ad` | `editAd` |
 | Явная отправка на модерацию | `submit_ad_for_review` | `submitAdForReview`, только для статуса `ready_for_review` |
 

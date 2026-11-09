@@ -11,7 +11,8 @@ from telead.errors import TransportError
 from ads_telegram_mcp.config import Settings
 from ads_telegram_mcp.server import create_server
 
-WRITE_METHODS = {"increaseAdBudget", "editAd", "submitAdForReview"}
+BUDGET_TOOLS = ("increase_ad_budget", "decrease_ad_budget")
+WRITE_METHODS = {"increaseAdBudget", "decreaseAdBudget", "editAd", "submitAdForReview"}
 
 
 class AdManagementTests(unittest.TestCase):
@@ -49,34 +50,39 @@ class AdManagementTests(unittest.TestCase):
 
     def call(self, tool="increase_ad_budget", **arguments):
         arguments = {"ad_id": 42, **arguments}
-        if tool == "increase_ad_budget":
+        if tool in BUDGET_TOOLS:
             arguments = {"amount": 5, "idempotency_key": "stable", **arguments}
         return anyio.run(self.server.call_tool, tool, arguments).structured_content
 
     def writes(self):
         return [request for request in self.requests if request[1] in WRITE_METHODS]
 
-    def test_top_up_uses_an_increment_explicit_scope_and_caller_key(self):
-        result = self.call(return_target=True)
-        self.assertEqual([item[1] for item in self.requests], [
-            "getAccountsById", "increaseAdBudget",
-        ])
-        self.assertEqual(len({id(item[0]) for item in self.requests}), 1)
-        write = self.writes()[0][2]
-        self.assertEqual(write["json"], {
-            "account_id": "default-related", "ad_id": 42, "amount": 5,
-            "return_target": True,
-        })
-        self.assertEqual(write["headers"]["Idempotency-Key"], "stable")
-        self.assertEqual(result["outcome"], "succeeded")
-        self.assertEqual(result["currency"], "TON")
-        self.assertEqual(result["idempotency_key"], "stable")
-        self.assertEqual(result["ad"]["remaining_budget"], 12.5)
-        self.assertEqual(result["ad"]["future_field"], {"preserved": True})
+    def test_budget_transfers_use_the_amount_scope_and_caller_key(self):
+        for tool, method in (
+            ("increase_ad_budget", "increaseAdBudget"),
+            ("decrease_ad_budget", "decreaseAdBudget"),
+        ):
+            with self.subTest(tool=tool):
+                self.requests.clear()
+                result = self.call(tool, return_target=True)
+                self.assertEqual([item[1] for item in self.requests], ["getAccountsById", method])
+                self.assertEqual(len({id(item[0]) for item in self.requests}), 1)
+                write = self.writes()[0][2]
+                self.assertEqual(write["json"], {
+                    "account_id": "default-related", "ad_id": 42, "amount": 5,
+                    "return_target": True,
+                })
+                self.assertEqual(write["headers"]["Idempotency-Key"], "stable")
+                self.assertEqual(result["outcome"], "succeeded")
+                self.assertEqual(result["currency"], "TON")
+                self.assertEqual(result["idempotency_key"], "stable")
+                self.assertEqual(result["ad"]["remaining_budget"], 12.5)
+                self.assertEqual(result["ad"]["future_field"], {"preserved": True})
 
     def test_all_tools_resolve_explicit_default_or_token_owner_scope(self):
         for tool, method, extra in (
             ("increase_ad_budget", "increaseAdBudget", {}),
+            ("decrease_ad_budget", "decreaseAdBudget", {}),
             ("edit_ad", "editAd", {"changes": {"is_paused": False}}),
             ("submit_ad_for_review", "submitAdForReview", {}),
         ):
@@ -150,17 +156,12 @@ class AdManagementTests(unittest.TestCase):
         self.assertEqual(result["ad"]["status"], "in_review")
 
     def test_invalid_inputs_fail_before_account_lookup(self):
-        cases = [
-            ("increase_ad_budget", {"amount": 0}),
-            ("increase_ad_budget", {"amount": -1}),
-            ("increase_ad_budget", {"amount": float("nan")}),
-            ("increase_ad_budget", {"amount": float("inf")}),
-            ("increase_ad_budget", {"amount": True}),
-            ("increase_ad_budget", {"amount": "5"}),
-            ("increase_ad_budget", {"idempotency_key": " "}),
-            ("increase_ad_budget", {"idempotency_key": "x" * 129}),
-            ("increase_ad_budget", {"idempotency_key": None}),
+        invalid_budget = [
+            {"amount": 0}, {"amount": -1}, {"amount": float("nan")}, {"amount": float("inf")},
+            {"amount": True}, {"amount": "5"}, {"idempotency_key": " "},
+            {"idempotency_key": "x" * 129}, {"idempotency_key": None},
         ]
+        cases = [(tool, arguments) for tool in BUDGET_TOOLS for arguments in invalid_budget]
         invalid_changes = [
             {}, {"text": None}, {"typo": 1}, {"target": {"type": "channels"}},
             {"placement": "channel_post"}, {"initial_budget": 5},
@@ -174,15 +175,16 @@ class AdManagementTests(unittest.TestCase):
             {"promote_url": "relative/path"},
         ]
         cases.extend(("edit_ad", {"changes": changes}) for changes in invalid_changes)
-        for tool in ("increase_ad_budget", "edit_ad", "submit_ad_for_review"):
+        for tool in (*BUDGET_TOOLS, "edit_ad", "submit_ad_for_review"):
             for value in (True, 1.5, "42", [42]):
                 cases.append((tool, {"ad_id": value, **({"changes": {"is_paused": False}}
                                                         if tool == "edit_ad" else {})}))
         for tool, arguments in cases:
             with self.subTest(tool=tool, arguments=arguments), self.assertRaises(ToolError):
                 self.call(tool, **arguments)
-        with self.assertRaises(ToolError):
-            anyio.run(self.server.call_tool, "increase_ad_budget", {"ad_id": 42, "amount": 5})
+        for tool in BUDGET_TOOLS:
+            with self.subTest(tool=tool), self.assertRaises(ToolError):
+                anyio.run(self.server.call_tool, tool, {"ad_id": 42, "amount": 5})
         self.assertEqual(self.requests, [])
 
     def test_inaccessible_or_invalid_account_prevents_writes(self):
@@ -197,7 +199,8 @@ class AdManagementTests(unittest.TestCase):
 
     def test_api_rejection_is_failed_and_keeps_only_the_safe_code(self):
         for tool, extra in (
-            ("increase_ad_budget", {}), ("edit_ad", {"changes": {"is_paused": False}}),
+            ("increase_ad_budget", {}), ("decrease_ad_budget", {}),
+            ("edit_ad", {"changes": {"is_paused": False}}),
             ("submit_ad_for_review", {}),
         ):
             with self.subTest(tool=tool):
@@ -213,7 +216,8 @@ class AdManagementTests(unittest.TestCase):
 
     def test_uncertain_outcomes_do_not_claim_failure_or_leak_details(self):
         for tool, extra in (
-            ("increase_ad_budget", {}), ("edit_ad", {"changes": {"is_paused": False}}),
+            ("increase_ad_budget", {}), ("decrease_ad_budget", {}),
+            ("edit_ad", {"changes": {"is_paused": False}}),
             ("submit_ad_for_review", {}),
         ):
             for failure in ("transport", "server", "in_progress", "malformed", "wrong_id"):
@@ -238,7 +242,7 @@ class AdManagementTests(unittest.TestCase):
                     self.assertNotIn("ad", result)
                     self.assertNotIn("offline-test-token", str(result))
                     self.assertNotIn("private details", str(result))
-                    if tool == "increase_ad_budget":
+                    if tool in BUDGET_TOOLS:
                         self.assertEqual(result["idempotency_key"], "stable")
                         self.assertTrue(all(
                             item[2]["headers"]["Idempotency-Key"] == "stable"
@@ -267,10 +271,11 @@ class AdManagementTests(unittest.TestCase):
 
     def test_write_tools_are_marked_as_mutating(self):
         tools = {tool.name: tool for tool in anyio.run(self.server.list_tools)}
-        self.assertEqual(set(tools["increase_ad_budget"].input_schema["required"]), {
-            "ad_id", "amount", "idempotency_key",
-        })
-        for name in ("increase_ad_budget", "edit_ad", "submit_ad_for_review"):
+        for name in BUDGET_TOOLS:
+            self.assertEqual(set(tools[name].input_schema["required"]), {
+                "ad_id", "amount", "idempotency_key",
+            })
+        for name in (*BUDGET_TOOLS, "edit_ad", "submit_ad_for_review"):
             annotations = tools[name].annotations
             self.assertFalse(annotations.read_only_hint)
             self.assertTrue(annotations.destructive_hint)

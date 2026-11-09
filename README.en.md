@@ -4,11 +4,11 @@ English | [Русский](README.md)
 
 An MCP server for working with Telegram Ads from AI assistants.
 Browse accounts and ads, query statistics, get monthly reports,
-choose targeting options, create and edit ads, top up their budgets,
+choose targeting options, create and edit ads, fund ads and return unused budget,
 submit them for review and upload media.
 
-The server runs locally over **stdio**. It provides **19 tools**:
-14 for reading data and 5 for changing ads and budgets and uploading media.
+The server runs locally over **stdio**. It provides **20 tools**:
+14 for reading data and 6 for changing ads and budgets and uploading media.
 
 ## Installation
 
@@ -171,6 +171,7 @@ Data access depends on the API token's permissions.
 | `get_target_bot` | A bot's ID and available details by username or numeric ID. |
 | `create_ads` | Results of creating one or more ads, or local validation with `dry_run`. |
 | `increase_ad_budget` | The result of transferring funds from the account to one ad's budget. |
+| `decrease_ad_budget` | The result of returning funds from an ad's budget to its account balance. |
 | `edit_ad` | The result of changing the supplied fields of one ad, including pause or resume. |
 | `submit_ad_for_review` | The result of explicitly submitting one ad for moderation. |
 | `upload_media` | The uploaded ad photo, video or website image ID and validated file metadata. |
@@ -306,9 +307,9 @@ repeated keys and duplicate ads. Use `get_ads_by_id` for additional details.
 
 ### Managing an existing ad
 
-`increase_ad_budget`, `edit_ad` and `submit_ad_for_review` operate on one
-`ad_id` per call. There is no batch processing. All three accept an optional
-`account_id` using the configuration rules above, and `return_target=false`.
+`increase_ad_budget`, `decrease_ad_budget`, `edit_ad` and `submit_ad_for_review`
+operate on one `ad_id` per call. All accept `profile` and `account_id` using
+the configuration rules above, plus `return_target=false`.
 Set `return_target=true` to include targeting in the returned ad.
 
 `increase_ad_budget` transfers funds from the account to an ad's budget.
@@ -327,6 +328,11 @@ When retrying within 24 hours, keep the same profile, key and all parameters.
 A new key or a retry after that period may transfer funds again.
 The pause state is unchanged; funding may resume delivery if other conditions
 allow. The tool does not make a separate review-submission call.
+
+`decrease_ad_budget` returns `amount` from the ad's remaining budget to its
+account balance. Pass a positive amount in the account's currency and an
+`idempotency_key`, just as for a top-up. Telegram checks that the ad has been
+inactive for at least 10 minutes and has enough budget remaining.
 
 `edit_ad` accepts a nonempty `changes` object. Only supplied, non-null fields
 are changed; omitted fields and `null` are ignored. To resume an ad:
@@ -367,8 +373,8 @@ the extra call is only needed for the appropriate status. The tool does not
 add budget or change the pause state. After approval, the ad may start running
 if other conditions allow.
 
-All three tools return `account_id`, `ad_id`, `currency`, `outcome` and the original
-`ad` object on success, or a safe `error` description. Budget top-ups also return
+All four tools return `account_id`, `ad_id`, `currency`, `outcome` and the original
+`ad` object on success, or a safe `error` description. Both budget tools also return
 `idempotency_key`. The possible `outcome` values are:
 
 - `succeeded`: a successful API response was received;
@@ -376,8 +382,8 @@ All three tools return `account_id`, `ad_id`, `currency`, `outcome` and the orig
 - `unknown`: the write outcome is unconfirmed, for example because the response was lost.
 
 For `unknown`, inspect the ad with `get_ads_by_id` before further actions.
-For top-ups, preserve the original key and parameters; do not create a new key
-to retry an uncertain request. Editing and review submission have no key:
+For a budget transfer retry within 24 hours, preserve the original key,
+profile and parameters. Editing and review submission have no key:
 check the current fields or status first. Invalid input and account-lookup
 errors are returned as tool errors before any write.
 

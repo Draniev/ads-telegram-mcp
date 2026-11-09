@@ -1,4 +1,4 @@
-"""Budget top-ups, partial edits and review submission for one ad at a time."""
+"""Budget transfers, partial edits and review submission for one ad at a time."""
 
 from typing import Annotated, Any
 
@@ -71,6 +71,44 @@ def register(server: MCPServer, runner: TeleAdRunner, profiles: ProfileResolver)
             lambda client: change_ad(
                 client, ad_id=ad_id,
                 change=lambda scope: client.increase_ad_budget(
+                    ad_id, amount, account_id=scope, idempotency_key=idempotency_key,
+                    return_target=return_target,
+                ),
+            ),
+        )
+        return _response(
+            result, ad_id=ad_id, errors=runner.errors,
+            idempotency_key=idempotency_key,
+        )
+
+    @server.tool(annotations=WRITE_AD)
+    async def decrease_ad_budget(
+        ad_id: AdID,
+        amount: PositiveMoney,
+        idempotency_key: IdempotencyKey,
+        account_id: AccountID | None = None,
+        return_target: bool = False,
+        profile: Profile | None = None,
+    ) -> dict[str, Any]:
+        """Return funds from one ad's remaining budget to its account balance.
+
+        amount is the positive amount to return, in the account's currency.
+        The ad must have been inactive for at least 10 minutes and have enough
+        remaining budget. Telegram Ads checks both conditions.
+
+        Retry within 24 hours using the same idempotency_key, profile and all
+        parameters. For outcome=unknown, inspect the ad with get_ads_by_id
+        before further actions and preserve the original key for any retry.
+
+        Returns account_id, ad_id, currency, outcome, idempotency_key and ad or
+        error. Set return_target to include targeting in the returned ad.
+        With multiple keys, omitted account_id uses the selected token owner.
+        """
+        result = await runner.run(
+            profiles.resolve(profile, account_id),
+            lambda client: change_ad(
+                client, ad_id=ad_id,
+                change=lambda scope: client.decrease_ad_budget(
                     ad_id, amount, account_id=scope, idempotency_key=idempotency_key,
                     return_target=return_target,
                 ),
