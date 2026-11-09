@@ -10,8 +10,8 @@ from telead import Client
 from telead.errors import TransportError
 from telead.models import Account, Ad, AdList
 
-from ads_telegram_mcp.config import Settings
-from ads_telegram_mcp.execution import TeleAdRunner
+from ads_telegram_mcp.errors import ErrorMessages
+from ads_telegram_mcp.execution import ClientConnection, TeleAdRunner
 
 
 class ExecutionTests(unittest.TestCase):
@@ -24,7 +24,8 @@ class ExecutionTests(unittest.TestCase):
         factory = patch("ads_telegram_mcp.execution.Client", return_value=self.client)
         self.factory = factory.start()
         self.addCleanup(factory.stop)
-        self.runner = TeleAdRunner(Settings(token="offline-test-token", _env_file=None))
+        self.connection = ClientConnection(token="offline-test-token", account_id="selected-related")
+        self.runner = TeleAdRunner(ErrorMessages(("offline-test-token",)))
 
     def test_composed_operation_preserves_models_and_uses_one_client_in_worker(self) -> None:
         self.client.get_current_account.return_value = Account.from_dict({"account_id": "owner"})
@@ -41,13 +42,15 @@ class ExecutionTests(unittest.TestCase):
             ads = client.get_ads_list(account_id=account.account_id)
             return [ad for ad in ads.ads if ad.status == "active"]
 
-        result = anyio.run(self.runner.run, select_active)
+        result = anyio.run(self.runner.run, self.connection, select_active)
         self.assertEqual(len(result), 1)
         self.assertIs(result[0], page.ads[0])
         self.assertIsInstance(result[0], Ad)
         self.assertEqual(result[0].raw["future_field"], "preserved")
         self.client.get_ads_list.assert_called_once_with(account_id="owner")
-        self.factory.assert_called_once()
+        self.factory.assert_called_once_with(
+            "offline-test-token", account_id="selected-related", timeout=30.0, max_retries=1,
+        )
         self.client.__enter__.assert_called_once()
         self.client.__exit__.assert_called_once_with(None, None, None)
 
@@ -59,7 +62,7 @@ class ExecutionTests(unittest.TestCase):
             return client.get_ads_list()
 
         with self.assertRaises(ToolError) as raised:
-            anyio.run(self.runner.run, load)
+            anyio.run(self.runner.run, self.connection, load)
         self.assertNotIn("offline-test-token", str(raised.exception))
         self.client.get_current_account.assert_called_once()
         self.client.__exit__.assert_called_once()
@@ -72,7 +75,7 @@ class ExecutionTests(unittest.TestCase):
             raise error
 
         with self.assertRaises(ToolError) as raised:
-            anyio.run(self.runner.run, reject)
+            anyio.run(self.runner.run, self.connection, reject)
         self.assertIs(raised.exception, error)
         self.client.__exit__.assert_called_once()
 

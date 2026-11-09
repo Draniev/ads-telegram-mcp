@@ -1,44 +1,32 @@
 """Run typed synchronous operations with an owned TeleAd client off the MCP loop."""
 
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from typing import TypeVar
 
 import anyio
 from mcp.server.mcpserver.exceptions import ToolError
 from telead import Client
-from telead.errors import APIError, TransportError, ValidationError
 
-from .config import Settings
-from .errors import OperationError
+from .errors import ErrorMessages
 
 T = TypeVar("T")
 
 
-def api_error_code(error: APIError, token: str) -> str:
-    """Return a bounded API code with any occurrence of the token redacted."""
-    code = str(error.code)
-    return (code.replace(token, "[redacted]") if token else code)[:128]
+@dataclass(frozen=True)
+class ClientConnection:
+    """The token and account scope already selected for one operation."""
 
-
-def public_error_message(error: Exception, token: str) -> str:
-    """Describe a failure without forwarding response bodies or request data."""
-    if isinstance(error, OperationError):
-        return str(error)
-    if isinstance(error, ValidationError):
-        return "TeleAd rejected the parameters; check the tool schema and API limits."
-    if isinstance(error, APIError):
-        return f"Telegram Ads API: {api_error_code(error, token)} (HTTP {error.status})."
-    if isinstance(error, TransportError):
-        return "Telegram Ads request failed or timed out; retry later."
-    return "Unexpected failure during Telegram Ads operation."
+    token: str = field(repr=False)
+    account_id: str | None = None
 
 
 class TeleAdRunner:
-    def __init__(self, settings: Settings) -> None:
-        self.settings = settings
+    def __init__(self, errors: ErrorMessages) -> None:
+        self.errors = errors
 
-    async def run(self, operation: Callable[[Client], T]) -> T:
-        """Run a synchronous operation; preserve its return type and value.
+    async def run(self, connection: ClientConnection, operation: Callable[[Client], T]) -> T:
+        """Run a synchronous operation with the supplied connection.
 
         The operation may make several calls and process their typed results
         using the same client. Materialize iterators before returning: the
@@ -46,15 +34,13 @@ class TeleAdRunner:
         """
         # requests is synchronous: keep I/O and retry backoff off the event loop.
         # Each operation owns its session; concurrent operations never share it.
-        return await anyio.to_thread.run_sync(self._run, operation)
+        return await anyio.to_thread.run_sync(self._run, connection, operation)
 
-    def _run(self, operation: Callable[[Client], T]) -> T:
-        if not self.settings.token:
-            raise ToolError("Set TELEGRAM_ADS_TOKEN in the MCP server environment.")
+    def _run(self, connection: ClientConnection, operation: Callable[[Client], T]) -> T:
         try:
             with Client(
-                self.settings.token,
-                account_id=self.settings.account_id,
+                connection.token,
+                account_id=connection.account_id,
                 timeout=30.0,
                 max_retries=1,
             ) as client:
@@ -63,4 +49,4 @@ class TeleAdRunner:
             # A composed operation may deliberately report a domain error.
             raise
         except Exception as error:
-            raise ToolError(public_error_message(error, self.settings.token)) from None
+            raise ToolError(self.errors.describe(error)) from None

@@ -6,9 +6,9 @@ from telead.models import Account
 from ..errors import OperationError
 
 
-def resolve_account(client: Client, account_id: str | None) -> Account:
-    """Resolve an explicit scope, client default, or token owner exactly once."""
-    scope = account_id if account_id is not None else client.account_id
+def resolve_account(client: Client) -> Account:
+    """Look up the scoped account or token owner before a write."""
+    scope = client.account_id
     if scope is None:
         account = client.get_current_account()
     else:

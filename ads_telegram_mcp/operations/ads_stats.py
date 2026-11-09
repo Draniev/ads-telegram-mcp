@@ -58,14 +58,14 @@ class AdsStatsBatch:
     errors: list[AdStatsFailure] = field(default_factory=list)
 
 
-def _all_ad_ids(client: Client, account_id: str | None) -> list[int]:
+def _all_ad_ids(client: Client) -> list[int]:
     """Load all ad IDs, raising AdsPaginationError if pagination stalls."""
     ids: list[int] = []
     offset: str | None = None
     seen_offsets: set[str] = set()
     while True:
         page = client.get_ads_list(
-            account_id=account_id, offset=offset, limit=100, return_target=False,
+            offset=offset, limit=100, return_target=False,
         )
         ids.extend(ad.ad_id for ad in page.ads)
         offset = page.next_offset
@@ -103,7 +103,6 @@ def collect_ads_stats(
     to_time: int,
     interval: int,
     ad_ids: list[int] | None = None,
-    account_id: str | None = None,
     include_timeseries: bool = False,
 ) -> AdsStatsBatch:
     """Collect per-ad statistics using the caller's open client.
@@ -115,12 +114,12 @@ def collect_ads_stats(
     Preserve interval rows only when include_timeseries is true.
     The caller must supply a validated, interval-aligned period.
     """
-    ids = ad_ids if ad_ids else _all_ad_ids(client, account_id)
+    ids = ad_ids if ad_ids else _all_ad_ids(client)
     batch = AdsStatsBatch(total_count=len(ids))
     for ad_id in ids:
         try:
             points = client.get_ad_stats(
-                ad_id, from_time, to_time, interval=interval, account_id=account_id,
+                ad_id, from_time, to_time, interval=interval,
             )
         except (AuthenticationError, PermissionDeniedError, RateLimitError):
             # These affect the whole operation. Stop rather than repeating the

@@ -7,8 +7,8 @@ Browse accounts and ads, query statistics, get monthly reports,
 choose targeting options, create and edit ads, top up their budgets,
 submit them for review and upload media.
 
-The server runs locally over **stdio**. It provides **18 tools**:
-13 for reading data and 5 for changing ads and budgets and uploading media.
+The server runs locally over **stdio**. It provides **19 tools**:
+14 for reading data and 5 for changing ads and budgets and uploading media.
 
 ## Installation
 
@@ -30,28 +30,53 @@ uv sync --locked
 cp .env.example .env
 ```
 
-Open `.env` and set your token:
+Open `.env` and set the list of tokens, even if you only have one:
 
 ```dotenv
-TELEGRAM_ADS_TOKEN=your_api_token
+TELEGRAM_ADS_TOKENS=["your_api_token"]
 ```
 
 ## Configuration
 
-| Variable | Purpose |
-|---|---|
-| `TELEGRAM_ADS_TOKEN` | API token for accessing Telegram Ads. Required for data requests. |
-| `TELEGRAM_ADS_ACCOUNT_ID` | Optional related account ID to use by default. |
-
 The server reads `.env` from the project root regardless of the working directory.
 Environment variables override `.env`, including empty values.
-You can set the token in the MCP client's environment instead of the file.
+You can set these values in the MCP client's environment instead of the file.
 `.env` is excluded from Git.
 
-The account is selected in this order:
+### Multiple keys
+
+Put the tokens in one JSON array. You can also supply a second array of
+unique names in the same order:
+
+```dotenv
+TELEGRAM_ADS_TOKENS=["first_token", "second_token", "third_token"]
+TELEGRAM_ADS_TOKEN_NAMES=["personal", "agency", "test"]
+```
+
+In this example, `agency` selects the second token. If `TELEGRAM_ADS_TOKEN_NAMES`
+is omitted, use the string labels `"1"`, `"2"`, `"3"` and so on.
+Restart the MCP server after changing `.env`.
+
+`list_profiles` returns the names or labels in configuration order, without
+keys. Pass the desired value as `profile`, for example to `get_current_account`:
+
+```json
+{"profile": "agency"}
+```
+
+With one token, `profile` is optional. With multiple tokens, it is required.
+Unknown names are rejected before any API request.
+
+The legacy `TELEGRAM_ADS_TOKEN` variable is used only when `TELEGRAM_ADS_TOKENS`
+is unset. An empty array `[]` means no keys are configured.
+
+### Account within a profile
+
+`profile` selects the key. For tools that accept `account_id`, the account
+under that key is selected in this order:
 
 1. The `account_id` passed to the tool.
-2. `TELEGRAM_ADS_ACCOUNT_ID`, if set.
+2. `TELEGRAM_ADS_ACCOUNT_ID`, if only one token is configured.
 3. The account that owns the token.
 
 `get_current_account` always returns the token owner's account.
@@ -60,9 +85,10 @@ while `get_accounts_by_id` uses the supplied list of IDs.
 To access the token owner's account when a default account is configured,
 pass its ID explicitly.
 
-Targeting catalogues and channel/bot lookups do not accept `account_id`:
-their scope is determined by the API token. `TELEGRAM_ADS_ACCOUNT_ID`
-does not switch them to a related account.
+Targeting catalogues and channel/bot lookups accept `profile`, but do not
+accept `account_id`: their scope is determined by the selected profile's key.
+Use the same profile and account for related operations, such as uploading
+media and creating an ad, or retrying a budget top-up.
 
 ## Connecting to an MCP client
 
@@ -129,6 +155,7 @@ Data access depends on the API token's permissions.
 
 | Tool | Returns |
 |---|---|
+| `list_profiles` | Profile names and the default profile, without keys or API requests. |
 | `get_current_account` | The token owner's account, balances and currency. |
 | `list_related_accounts` | One page of related accounts. |
 | `get_accounts_by_id` | Account details for a list of IDs. |
@@ -272,7 +299,7 @@ in the original order. Each result has a zero-based `index`, its key and an `out
 if the batch only partially succeeds. A successful response may be a replay
 of an earlier request rather than a newly created ad.
 
-When retrying, keep the same `idempotency_key` and all ad parameters.
+When retrying, keep the same `profile`, `idempotency_key` and all ad parameters.
 Telegram retains the result for a key for up to 24 hours. After that,
 the same request may create another ad. The server preserves item order,
 repeated keys and duplicate ads. Use `get_ads_by_id` for additional details.
@@ -296,7 +323,7 @@ in the selected account's currency. A stable `idempotency_key` is required:
 }
 ```
 
-When retrying within 24 hours, keep the same key and all parameters.
+When retrying within 24 hours, keep the same profile, key and all parameters.
 A new key or a retry after that period may transfer funds again.
 The pause state is unchanged; funding may resume delivery if other conditions
 allow. The tool does not make a separate review-submission call.
@@ -435,7 +462,7 @@ For large accounts, increase the tool timeout in your MCP client.
 - For monthly reports, set `year` from 2021 to 2100 and `month` from 1 to 12.
 - Monetary values are returned in the account's currency: `EUR`, `TON` or `XTR`.
 
-If a tool reports a missing `TELEGRAM_ADS_TOKEN`, check `.env` and the MCP client's
+If a tool reports a missing key or profile, check `.env` and the MCP client's
 environment: an empty environment variable overrides the value in the file.
 
 ## Dependencies and documentation

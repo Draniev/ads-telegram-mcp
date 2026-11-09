@@ -6,19 +6,21 @@ from mcp.server import MCPServer
 from pydantic import Field
 from telead.errors import APIError
 
-from ..execution import TeleAdRunner, api_error_code, public_error_message
+from ..execution import TeleAdRunner
 from ..models.ad_creation import NewAd
 from ..operations.ad_creation import create_ads as create_ads_operation
-from .common import CREATE_ADS, READ_ONLY, AccountID, PageSize
+from ..profiles import ProfileResolver
+from .common import CREATE_ADS, READ_ONLY, AccountID, PageSize, Profile
 
 
-def register(server: MCPServer, runner: TeleAdRunner) -> None:
+def register(server: MCPServer, runner: TeleAdRunner, profiles: ProfileResolver) -> None:
     @server.tool(annotations=CREATE_ADS)
     async def create_ads(
         ads: Annotated[list[NewAd], Field(min_length=1)],
         account_id: AccountID | None = None,
         dry_run: bool = False,
         stop_on_error: bool = True,
+        profile: Profile | None = None,
     ) -> dict[str, Any]:
         """Create one or more ads in order, or validate them locally with dry_run.
 
@@ -27,7 +29,7 @@ def register(server: MCPServer, runner: TeleAdRunner) -> None:
         dates override is_paused. Amounts use the selected account's currency.
 
         Each ad requires an idempotency_key. Retry with the same key and identical
-        parameters within 24 hours; later retries may create another ad.
+        parameters and profile within 24 hours; later retries may create another ad.
         Duplicates are not removed. No rollback is performed.
 
         Outcomes are succeeded, failed, unknown, or not_attempted. For unknown
@@ -36,19 +38,20 @@ def register(server: MCPServer, runner: TeleAdRunner) -> None:
         Unexpected client failures also stop remaining writes.
 
         dry_run makes no API calls and does not check access, budget or moderation.
-        Omitted account_id uses the configured default or the token owner.
+        With multiple keys, omitted account_id uses the selected token owner.
         """
+        connection = profiles.resolve(profile, account_id, require_token=not dry_run)
         if dry_run:
             return {
                 "dry_run": True,
-                "account_id": account_id if account_id is not None else runner.settings.account_id,
+                "account_id": connection.account_id,
                 "currency": None,
                 "validated_count": len(ads),
                 "ads": [item.model_dump(mode="json", exclude_none=True) for item in ads],
             }
-        batch = await runner.run(lambda client: create_ads_operation(
-            client, ads, account_id=account_id, stop_on_error=stop_on_error,
-        ))
+        batch = await runner.run(
+            connection, lambda client: create_ads_operation(client, ads, stop_on_error=stop_on_error),
+        )
         results = []
         for result in batch.results:
             item = {
@@ -61,9 +64,9 @@ def register(server: MCPServer, runner: TeleAdRunner) -> None:
                 )}
                 item["ad"]["currency"] = result.ad.currency or batch.account.currency
             if result.error is not None:
-                item["error"] = {"message": public_error_message(result.error, runner.settings.token)}
+                item["error"] = {"message": runner.errors.describe(result.error)}
                 if isinstance(result.error, APIError):
-                    item["error"]["code"] = api_error_code(result.error, runner.settings.token)
+                    item["error"]["code"] = runner.errors.api_code(result.error)
             results.append(item)
         counts = {
             f"{outcome}_count": sum(item.outcome == outcome for item in batch.results)
@@ -83,6 +86,7 @@ def register(server: MCPServer, runner: TeleAdRunner) -> None:
         offset: str | None = None,
         limit: PageSize = 20,
         return_target: bool = False,
+        profile: Profile | None = None,
     ) -> dict[str, Any]:
         """Get one page of ads from an account.
 
@@ -90,14 +94,13 @@ def register(server: MCPServer, runner: TeleAdRunner) -> None:
         This tool does not load additional pages automatically.
         Set return_target to include targeting settings.
 
-        Omitted account_id uses TELEGRAM_ADS_ACCOUNT_ID if set,
-        otherwise the token owner's account.
+        With multiple keys, omitted account_id uses the selected token owner.
         """
         page = await runner.run(
+            profiles.resolve(profile, account_id),
             lambda client: client.get_ads_list(
-                account_id=account_id, offset=offset,
-                limit=limit, return_target=return_target,
-            )
+                offset=offset, limit=limit, return_target=return_target,
+            ),
         )
         return page.raw
 
@@ -106,18 +109,17 @@ def register(server: MCPServer, runner: TeleAdRunner) -> None:
         ad_ids: Annotated[list[int], Field(min_length=1, max_length=100)],
         account_id: AccountID | None = None,
         return_target: bool = False,
+        profile: Profile | None = None,
     ) -> dict[str, Any]:
         """Get selected ads by their IDs.
 
         Accepts 1 to 100 IDs. Ad IDs are unique within an account.
         Set return_target to include targeting settings.
 
-        Omitted account_id uses TELEGRAM_ADS_ACCOUNT_ID if set,
-        otherwise the token owner's account.
+        With multiple keys, omitted account_id uses the selected token owner.
         """
         ads = await runner.run(
-            lambda client: client.get_ads_by_id(
-                ad_ids, account_id=account_id, return_target=return_target,
-            )
+            profiles.resolve(profile, account_id),
+            lambda client: client.get_ads_by_id(ad_ids, return_target=return_target),
         )
         return {"ads": [ad.raw for ad in ads]}

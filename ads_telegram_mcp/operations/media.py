@@ -107,7 +107,7 @@ def _video_info(content: bytes) -> MediaInfo:
 
 
 def upload_media(
-    client: Client, *, file_path: str, kind: MediaKind, account_id: str | None,
+    client: Client, *, file_path: str, kind: MediaKind,
 ) -> MediaUpload:
     """Read and validate a file, then upload exactly those bytes to one account."""
     path = Path(file_path)
@@ -126,7 +126,7 @@ def upload_media(
     if not 0 < len(content) <= max_bytes:
         raise OperationError(f"The {kind} file must contain 1 to {max_bytes} bytes.")
     info = _video_info(content) if kind == "ad_video" else _image_info(content, kind)
-    account = resolve_account(client, account_id)
+    account = resolve_account(client)
     if kind == "ad_photo":
         media = client.upload_ad_photo(content, filename=path.name, account_id=account.account_id)
     elif kind == "ad_video":

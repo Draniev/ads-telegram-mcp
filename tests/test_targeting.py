@@ -126,13 +126,13 @@ class TargetingTests(unittest.TestCase):
     def test_catalogue_and_location_tools_have_separate_schemas(self):
         tools = anyio.run(self.server.list_tools)
         tool = next(tool for tool in tools if tool.name == "get_targeting_options")
-        self.assertEqual(set(tool.input_schema["properties"]), {"catalog"})
+        self.assertEqual(set(tool.input_schema["properties"]), {"catalog", "profile"})
         self.assertEqual(tool.input_schema["properties"]["catalog"]["enum"], [
             "languages", "topics", "countries",
         ])
         locations = next(tool for tool in tools if tool.name == "get_target_locations")
         self.assertEqual(set(locations.input_schema["properties"]), {
-            "query", "country_code",
+            "query", "country_code", "profile",
         })
         self.assertEqual(set(locations.input_schema["required"]), {
             "query", "country_code",

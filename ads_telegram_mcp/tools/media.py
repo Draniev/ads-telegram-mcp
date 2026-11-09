@@ -8,15 +8,17 @@ from pydantic import Field
 
 from ..execution import TeleAdRunner
 from ..operations.media import MediaKind, upload_media as upload_media_operation
-from .common import UPLOAD_MEDIA, AccountID
+from ..profiles import ProfileResolver
+from .common import UPLOAD_MEDIA, AccountID, Profile
 
 
-def register(server: MCPServer, runner: TeleAdRunner) -> None:
+def register(server: MCPServer, runner: TeleAdRunner, profiles: ProfileResolver) -> None:
     @server.tool(annotations=UPLOAD_MEDIA)
     async def upload_media(
         file_path: Annotated[str, Field(min_length=1)],
         kind: MediaKind,
         account_id: AccountID | None = None,
+        profile: Profile | None = None,
     ) -> dict[str, Any]:
         """Upload a local photo, MP4 video, or website photo to Telegram Ads.
 
@@ -28,11 +30,12 @@ def register(server: MCPServer, runner: TeleAdRunner) -> None:
         and validated media metadata. Reuse the ID only in the same account.
         Upload retries may create a new media ID; no idempotency key is available.
 
-        Omitted account_id uses the configured default or the token owner.
+        With multiple keys, omitted account_id uses the selected token owner.
         """
-        result = await runner.run(lambda client: upload_media_operation(
-            client, file_path=file_path, kind=kind, account_id=account_id,
-        ))
+        result = await runner.run(
+            profiles.resolve(profile, account_id),
+            lambda client: upload_media_operation(client, file_path=file_path, kind=kind),
+        )
         return {
             **result.media.raw,
             "account_id": result.account.account_id, "kind": result.kind,

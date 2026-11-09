@@ -10,7 +10,7 @@
 
 `create_server(settings: Settings)` принимает готовые настройки.
 В точке запуска вызывается `create_server(settings=Settings())`.
-`register_tools` передаёт сервер и `TeleAdRunner` модулям областей.
+`register_tools` передаёт сервер, `TeleAdRunner` и `ProfileResolver` модулям областей.
 Каждый модуль регистрирует функции декоратором `@server.tool(...)`.
 Регистрация инструментов не выполняет запросов к API.
 
@@ -28,13 +28,27 @@ stdout занят протоколом MCP, сообщения SDK идут в s
 3. `.env` в корне проекта.
 4. Значения полей по умолчанию.
 
-Пустая переменная окружения тоже перекрывает `.env`. Пробелы по краям значений
-удаляются; пустой `account_id` становится `None`. Модель настроек неизменяема,
-поле токена исключено из repr и сериализации.
+`TELEGRAM_ADS_TOKENS` и необязательная `TELEGRAM_ADS_TOKEN_NAMES` читаются
+из JSON-массивов с сохранением порядка. Если имена заданы, их число должно
+совпадать с числом токенов, а сами имена должны быть уникальны. Пустые строки
+в массивах отклоняются. Отсутствие массива токенов разрешает старый
+`TELEGRAM_ADS_TOKEN`; явно заданный пустой массив отключает этот вариант.
+Токены исключены из repr и сериализации настроек.
 Для изоляции проверок от локального `.env` передавайте `Settings(_env_file=None, ...)`.
 
-Без токена сервер запускается и отдаёт `tools/list`; вызов API-инструмента
-возвращает MCP tool error с именем недостающей переменной.
+`ProfileResolver.resolve(profile, account_id)` выбирает ключ по имени или по
+строковому номеру позиции, если имён нет. Единственный токен выбирается
+автоматически; при нескольких токенах требуется явный `profile`. Без него
+операция отклоняется до создания Client. Общий `account_id` по умолчанию
+применяется только в режиме с одним токеном. Явный ID имеет приоритет.
+Резолвер возвращает `ClientConnection` с выбранными токеном и ID. Если ID
+равен `None`, методы работают от имени владельца токена. Раннер принимает
+это подключение и не читает настройки профилей. В `dry_run` определяется
+только локальная область аккаунта. `list_profiles` не создаёт Client и
+возвращает только имена и профиль по умолчанию.
+
+Без ключей сервер запускается и отдаёт `tools/list`; вызов API-инструмента
+возвращает MCP tool error с подсказкой по настройке.
 Браузерная сессия Telegram Ads не авторизует API-клиент.
 
 ## Структура проекта и добавление инструментов
@@ -44,8 +58,9 @@ ads_telegram_mcp/
   __main__.py        # python -m
   server.py          # сборка MCPServer и запуск stdio
   config.py          # pydantic-settings: окружение и .env проекта
-  errors.py          # ошибки локальных операций с публичными сообщениями
-  execution.py       # типизированные операции с TeleAd, рабочий поток, ошибки MCP
+  profiles.py        # локальный выбор ключа и аккаунта
+  errors.py          # публичные сообщения с удалением ключей из ошибок
+  execution.py       # создание Client и выполнение операции в рабочем потоке
   models/
     ad_creation.py   # входные модели объявления, таргетинга и расписания
     ad_management.py # частичное редактирование и ключи пополнения бюджета
@@ -72,6 +87,7 @@ tests/
   test_server.py    # проверки без сети
   test_execution.py # составные операции и время жизни Client
   test_settings.py  # источники настроек и их приоритет
+  test_profiles.py  # маршрутизация ключей и аккаунтов через MCP без сети
   test_ads_stats.py # пагинация, агрегирование и частичные ошибки get_ads_stats
   test_ad_creation.py # валидация, параметры API и пакетные исходы создания
   test_ad_management.py # одиночные записи, ключи, частичные изменения и ошибки
@@ -80,10 +96,10 @@ tests/
 ```
 
 Для новой области добавьте `tools/budgets.py`, `audiences.py`
-или `pixel.py` с `register(server, runner)` и включите модуль
+или `pixel.py` с `register(server, runner, profiles)` и включите модуль
 в реестр. Внутри регистрируйте функции с явными Python-параметрами через
-`@server.tool(...)`; вызывайте методы клиента через `await runner.run(operation)`.
-`TeleAdRunner.run` принимает синхронную функцию `Client -> T` и возвращает `T`
+`@server.tool(...)`. Передайте `runner.run(connection, operation)` готовое
+подключение и синхронную функцию `Client -> T`. Метод возвращает `T`
 без преобразования моделей в словари. Для короткого вызова подойдёт lambda,
 для нескольких API-вызовов и обработки результатов — обычная функция.
 
@@ -93,26 +109,31 @@ from telead import Client
 from telead.models import Ad
 
 from ..execution import TeleAdRunner
-from .common import READ_ONLY
+from ..profiles import ProfileResolver
+from .common import READ_ONLY, AccountID, Profile
 
 
-def register(server: MCPServer, runner: TeleAdRunner) -> None:
+def register(server: MCPServer, runner: TeleAdRunner, profiles: ProfileResolver) -> None:
     @server.tool(annotations=READ_ONLY)
-    async def list_active_ads() -> dict:
-        """Get active ads from the token owner's account.
+    async def list_active_ads(
+        profile: Profile | None = None,
+        account_id: AccountID | None = None,
+    ) -> dict:
+        """Get active ads from the selected account.
 
         Only the first 20 ads are inspected.
         """
+        connection = profiles.resolve(profile, account_id)
+
         def load(client: Client) -> list[Ad]:
-            account = client.get_current_account()
-            page = client.get_ads_list(account_id=account.account_id, limit=20)
+            page = client.get_ads_list(limit=20)
             return [ad for ad in page.ads if ad.status == "active"]
 
-        ads = await runner.run(load)
+        ads = await runner.run(connection, load)
         return {"ads": [ad.raw for ad in ads]}
 ```
 
-Пример явно выбирает владельца токена и обрабатывает одну страницу объявлений.
+Пример выбирает подключение перед вызовом и обрабатывает одну страницу объявлений.
 Он иллюстрирует расширение сервера и не входит в текущий набор инструментов.
 
 `TeleAdRunner` создаёт один Client на всю операцию и закрывает его по её
@@ -181,9 +202,10 @@ ID обрабатываются в полученном порядке без у
 Ошибки API отдельных объявлений и транспортные ошибки после повторов TeleAd
 сохраняются в `AdStatsFailure`; следующие ID продолжают обрабатываться.
 Ошибки авторизации, прав доступа и ограничения частоты запросов прекращают
-всю операцию. Общая функция `public_error_message` в `execution.py` формирует
+всю операцию. Метод `ErrorMessages.describe` формирует
 сообщения как для ошибок всего инструмента, так и для отдельных объявлений,
-без тел ответов, транспортных подробностей и токена.
+без тел ответов и транспортных подробностей. Из кодов API удаляются все
+настроенные токены, в том числе при частичных результатах.
 
 Инструмент возвращает округлённые `from_time` и `to_time`, `interval`,
 `total_count`, `succeeded_count`, `failed_count`, `complete`, `ads` и `errors`.
@@ -196,6 +218,7 @@ ID обрабатываются в полученном порядке без у
 
 | Область | MCP-инструмент | TeleAd |
 |---|---|---|
+| Аккаунты | `list_profiles` | Локальные настройки, без API |
 | Аккаунты | `get_current_account` | `get_current_account` |
 | Аккаунты | `list_related_accounts` | `get_related_accounts_list` |
 | Аккаунты | `get_accounts_by_id` | `get_accounts_by_id` |
@@ -262,8 +285,8 @@ ID обрабатываются в полученном порядке без у
 Динамическую пригодность дат проверяет API, чтобы локальные часы не мешали
 повтору с тем же ключом после наступления запланированного времени.
 
-Операции записи сначала разрешают явный или настроенный аккаунт через
-`get_accounts_by_id`; без него получают владельца токена через `get_current_account`.
+Перед записью `resolve_account(client)` проверяет `client.account_id` через
+`get_accounts_by_id`; без ID получает владельца токена через `get_current_account`.
 Ответ без доступного ID и известной валюты прерывает операцию до записи.
 Аккаунт определяется один раз на пакет и передаётся явно в каждый `create_ad`.
 Ключи, порядок, повторяющиеся объявления и ID сохраняются.

@@ -8,9 +8,10 @@ from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import Field
 from telead import Client
 
-from ..execution import TeleAdRunner, public_error_message
+from ..execution import TeleAdRunner
 from ..operations.ads_stats import AdsPaginationError, AdsStatsBatch, collect_ads_stats
-from .common import READ_ONLY, AccountID
+from ..profiles import ProfileResolver
+from .common import READ_ONLY, AccountID, Profile
 
 Timestamp = Annotated[int, Field(ge=0)]
 Interval = Literal[300, 86400]
@@ -21,7 +22,7 @@ def validate_period(start: int, end: int, interval: int) -> None:
         raise ToolError("Use from_time < to_time and a period of at most 1000 intervals.")
 
 
-def register(server: MCPServer, runner: TeleAdRunner) -> None:
+def register(server: MCPServer, runner: TeleAdRunner, profiles: ProfileResolver) -> None:
     @server.tool(annotations=READ_ONLY)
     async def get_ads_stats(
         from_time: Timestamp, to_time: Timestamp,
@@ -29,6 +30,7 @@ def register(server: MCPServer, runner: TeleAdRunner) -> None:
         interval: Interval = 86400,
         account_id: AccountID | None = None,
         include_timeseries: bool = False,
+        profile: Profile | None = None,
     ) -> dict[str, Any]:
         """Get per-ad totals for [from_time, to_time), in Unix seconds.
 
@@ -42,8 +44,7 @@ def register(server: MCPServer, runner: TeleAdRunner) -> None:
         Totals are null when no data is available. Check complete and errors
         before treating the result as complete.
 
-        Omitted account_id uses TELEGRAM_ADS_ACCOUNT_ID if set,
-        otherwise the token owner's account.
+        With multiple keys, omitted account_id uses the selected token owner.
         """
         validate_period(from_time, to_time, interval)
         start = from_time // interval * interval
@@ -54,13 +55,12 @@ def register(server: MCPServer, runner: TeleAdRunner) -> None:
             try:
                 return collect_ads_stats(
                     client, from_time=start, to_time=end, interval=interval,
-                    ad_ids=ad_ids, account_id=account_id,
-                    include_timeseries=include_timeseries,
+                    ad_ids=ad_ids, include_timeseries=include_timeseries,
                 )
             except AdsPaginationError as error:
                 raise ToolError(str(error)) from None
 
-        batch = await runner.run(collect)
+        batch = await runner.run(profiles.resolve(profile, account_id), collect)
         ads = []
         for result in batch.ads:
             totals = None
@@ -79,7 +79,7 @@ def register(server: MCPServer, runner: TeleAdRunner) -> None:
             "ads": ads,
             "errors": [
                 {"ad_id": failure.ad_id,
-                 "error": public_error_message(failure.error, runner.settings.token)}
+                 "error": runner.errors.describe(failure.error)}
                 for failure in batch.errors
             ],
         }
@@ -88,6 +88,7 @@ def register(server: MCPServer, runner: TeleAdRunner) -> None:
     async def get_account_stats(
         from_time: Timestamp, to_time: Timestamp,
         interval: Interval = 86400, account_id: AccountID | None = None,
+        profile: Profile | None = None,
     ) -> dict[str, Any]:
         """Get account statistics for [from_time, to_time), in Unix seconds.
 
@@ -95,14 +96,14 @@ def register(server: MCPServer, runner: TeleAdRunner) -> None:
         The API rounds bounds to interval starts; at most 1000 intervals
         are allowed. Monetary values use the returned currency.
 
-        Omitted account_id uses TELEGRAM_ADS_ACCOUNT_ID if set,
-        otherwise the token owner's account.
+        With multiple keys, omitted account_id uses the selected token owner.
         """
         validate_period(from_time, to_time, interval)
         stats = await runner.run(
+            profiles.resolve(profile, account_id),
             lambda client: client.get_account_stats(
-                from_time, to_time, interval=interval, account_id=account_id,
-            )
+                from_time, to_time, interval=interval,
+            ),
         )
         return {"stats": [point.raw for point in stats]}
 
@@ -110,6 +111,7 @@ def register(server: MCPServer, runner: TeleAdRunner) -> None:
     async def get_ad_stats(
         ad_id: int, from_time: Timestamp, to_time: Timestamp,
         interval: Interval = 86400, account_id: AccountID | None = None,
+        profile: Profile | None = None,
     ) -> dict[str, Any]:
         """Get one ad's statistics for [from_time, to_time), in Unix seconds.
 
@@ -117,14 +119,14 @@ def register(server: MCPServer, runner: TeleAdRunner) -> None:
         The API rounds bounds to interval starts; at most 1000 intervals
         are allowed. The ad ID is scoped to the selected account.
 
-        Omitted account_id uses TELEGRAM_ADS_ACCOUNT_ID if set,
-        otherwise the token owner's account.
+        With multiple keys, omitted account_id uses the selected token owner.
         """
         validate_period(from_time, to_time, interval)
         stats = await runner.run(
+            profiles.resolve(profile, account_id),
             lambda client: client.get_ad_stats(
-                ad_id, from_time, to_time, interval=interval, account_id=account_id,
-            )
+                ad_id, from_time, to_time, interval=interval,
+            ),
         )
         return {"stats": [point.raw for point in stats]}
 
@@ -133,16 +135,16 @@ def register(server: MCPServer, runner: TeleAdRunner) -> None:
         year: Annotated[int, Field(ge=2021, le=2100)],
         month: Annotated[int, Field(ge=1, le=12)],
         account_id: AccountID | None = None,
+        profile: Profile | None = None,
     ) -> dict[str, Any]:
         """Get per-ad totals for a calendar month.
 
         Returns a report of active ads for the given year and month.
         Monetary values use each item's currency.
 
-        Omitted account_id uses TELEGRAM_ADS_ACCOUNT_ID if set,
-        otherwise the token owner's account.
+        With multiple keys, omitted account_id uses the selected token owner.
         """
         report = await runner.run(
-            lambda client: client.get_account_report(year, month, account_id=account_id)
+            profiles.resolve(profile, account_id), lambda client: client.get_account_report(year, month),
         )
         return {"report": [item.raw for item in report]}

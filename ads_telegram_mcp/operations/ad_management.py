@@ -23,7 +23,7 @@ class AdChangeResult:
 
 
 def change_ad(
-    client: Client, *, account_id: str | None, ad_id: int,
+    client: Client, *, ad_id: int,
     change: Callable[[str], Ad],
 ) -> AdChangeResult:
     """Resolve scope, then perform one write without rollback or follow-up writes.
@@ -31,7 +31,7 @@ def change_ad(
     Lookup errors propagate before the write. Transport failures or malformed
     responses after attempting the write are retained as uncertain outcomes.
     """
-    account = resolve_account(client, account_id)
+    account = resolve_account(client)
     try:
         ad = change(account.account_id)
         if type(ad.raw.get("ad_id")) is not int or ad.ad_id != ad_id:

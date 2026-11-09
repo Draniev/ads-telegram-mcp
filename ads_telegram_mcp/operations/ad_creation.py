@@ -33,7 +33,7 @@ class CreationBatch:
 
 
 def create_ads(
-    client: Client, ads: list[NewAd], *, account_id: str | None,
+    client: Client, ads: list[NewAd], *,
     stop_on_error: bool,
 ) -> CreationBatch:
     """Resolve the account, then create each ad with its caller-supplied key.
@@ -41,7 +41,7 @@ def create_ads(
     API rejection is failed; an uncertain response is unknown. Stopping leaves
     remaining items not_attempted. No created ad is rolled back or deleted.
     """
-    batch = CreationBatch(account=resolve_account(client, account_id))
+    batch = CreationBatch(account=resolve_account(client))
     stopped = False
     for index, item in enumerate(ads):
         if stopped:

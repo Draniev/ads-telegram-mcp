@@ -34,12 +34,14 @@ async def create_ads(
     account_id: str | None = None,
     dry_run: bool = False,
     stop_on_error: bool = True,
+    profile: str | None = None,
 ) -> dict:
     ...
 ```
 
-`ads` должен содержать хотя бы один элемент. `account_id` использует уже
-принятые в проекте правила: явное значение, настройка окружения, владелец токена.
+`ads` должен содержать хотя бы один элемент. `profile` выбирает токен.
+`account_id` задаёт явный ID либо использует настройку для одного токена;
+без ID запрос относится к владельцу выбранного токена.
 Во время выполнения аккаунт определяется один раз и применяется ко всему пакету.
 В ответе указывается конкретный ID аккаунта и его валюта.
 
@@ -202,6 +204,7 @@ async def upload_media(
     file_path: str,
     kind: Literal["ad_photo", "ad_video", "website_photo"],
     account_id: str | None = None,
+    profile: str | None = None,
 ) -> dict:
     ...
 ```

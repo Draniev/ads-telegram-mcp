@@ -6,6 +6,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from pydantic import ValidationError
+
 from ads_telegram_mcp.config import Settings
 
 
@@ -53,6 +55,46 @@ class SettingsTests(unittest.TestCase):
     def test_default_env_file_is_anchored_to_project(self) -> None:
         project = Path(__file__).resolve().parents[1]
         self.assertEqual(Settings.model_config["env_file"], project / ".env")
+
+    def test_lists_load_from_dotenv_and_environment_overrides_tokens(self) -> None:
+        self.env_file.write_text(
+            'TELEGRAM_ADS_TOKENS=[" file-team-a ", "file-team-b", "file-team-c"]\n'
+            'TELEGRAM_ADS_TOKEN_NAMES=["Личный", "Agency", "Тестовый"]\n',
+            encoding="utf-8",
+        )
+        settings = Settings(_env_file=self.env_file)
+        self.assertEqual(settings.configured_tokens, ("file-team-a", "file-team-b", "file-team-c"))
+        with patch.dict(os.environ, {
+            "TELEGRAM_ADS_TOKENS": '["env-team-a", "env-team-b", "env-team-c"]',
+        }):
+            settings = Settings(_env_file=self.env_file)
+        self.assertEqual(settings.configured_tokens, ("env-team-a", "env-team-b", "env-team-c"))
+        self.assertEqual(settings.profile_names, ("Личный", "Agency", "Тестовый"))
+        for rendered in (repr(settings), settings.model_dump_json()):
+            self.assertNotIn("env-team-", rendered)
+
+    def test_empty_list_takes_precedence_over_legacy_token(self) -> None:
+        with patch.dict(os.environ, {"TELEGRAM_ADS_TOKENS": "[]"}):
+            settings = Settings(_env_file=self.env_file)
+        self.assertEqual(settings.configured_tokens, ())
+        self.assertEqual(settings.profile_names, ())
+
+    def test_invalid_lists_do_not_include_tokens_in_error_text(self) -> None:
+        cases = [
+            (["profile-secret"], ["A", "B"], "one name per token"),
+            (["profile-secret", "other-secret"], ["A", " A "], "unique names"),
+            (["profile-secret"], [" "], "at least 1 character"),
+            (["profile-secret", " "], None, "at least 1 character"),
+        ]
+        for tokens, names, message in cases:
+            with self.subTest(message=message), self.assertRaises(ValidationError) as raised:
+                Settings(
+                    token="legacy-secret", tokens=tokens, token_names=names,
+                    _env_file=None,
+                )
+            self.assertIn(message, str(raised.exception))
+            self.assertNotIn("profile-secret", str(raised.exception))
+            self.assertNotIn("legacy-secret", str(raised.exception))
 
 
 if __name__ == "__main__":

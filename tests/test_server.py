@@ -13,7 +13,8 @@ from telead.errors import TransportError
 from telead import Client
 
 from ads_telegram_mcp.config import Settings
-from ads_telegram_mcp.execution import TeleAdRunner
+from ads_telegram_mcp.errors import ErrorMessages
+from ads_telegram_mcp.execution import ClientConnection, TeleAdRunner
 from ads_telegram_mcp.server import create_server
 
 
@@ -66,34 +67,44 @@ class ServerTests(unittest.TestCase):
         self.http.assert_not_called()
 
     def test_public_errors_do_not_contain_transport_secrets(self) -> None:
-        runner = TeleAdRunner(Settings(token="private-token", _env_file=None))
+        connection = ClientConnection(token="private-token")
+        runner = TeleAdRunner(ErrorMessages(("private-token",)))
         with patch("ads_telegram_mcp.execution.Client", side_effect=TransportError("private-token request contents")):
             with self.assertRaises(ToolError) as raised:
-                anyio.run(runner.run, Client.get_current_account)
+                anyio.run(runner.run, connection, Client.get_current_account)
         self.assertNotIn("private-token", str(raised.exception))
-        self.assertNotIn("private-token", repr(runner.settings))
+        self.assertNotIn("private-token", repr(connection))
 
     def test_stdio_discovery_and_missing_token(self) -> None:
         async def check() -> None:
             params = StdioServerParameters(
                 command=sys.executable,
-                args=["-B", "-m", "ads_telegram_mcp"],
+                args=["-B", "-c", (
+                    "from ads_telegram_mcp.config import Settings; "
+                    "from ads_telegram_mcp.server import create_server; "
+                    "settings = Settings(token='', account_id=None, tokens=[], "
+                    "token_names=None, _env_file=None); "
+                    "create_server(settings).run(transport='stdio')"
+                )],
                 cwd=str(Path(__file__).resolve().parents[1]),
-                env={"TELEGRAM_ADS_TOKEN": "", "TELEGRAM_ADS_ACCOUNT_ID": ""},
             )
             with anyio.fail_after(15):
                 async with stdio_client(params) as (read, write):
                     async with ClientSession(read, write) as session:
                         await session.initialize()
                         tools = (await session.list_tools()).tools
-                        self.assertEqual(len(tools), 18)
+                        self.assertEqual(len(tools), 19)
                         self.assertIn("get_ads_stats", {tool.name for tool in tools})
                         self.assertTrue({
                             "get_targeting_options", "get_target_locations",
                             "get_target_channel", "get_target_bot",
                             "increase_ad_budget", "edit_ad", "submit_ad_for_review",
+                            "list_profiles",
                         }.issubset({tool.name for tool in tools}))
                         for tool in tools:
+                            if tool.name != "list_profiles":
+                                self.assertIn("profile", tool.input_schema["properties"])
+                                self.assertNotIn("profile", tool.input_schema.get("required", []))
                             self.assertEqual(
                                 tool.annotations.read_only_hint,
                                 tool.name not in {
@@ -103,7 +114,7 @@ class ServerTests(unittest.TestCase):
                             )
                         result = await session.call_tool("get_current_account", {})
                         self.assertTrue(result.is_error)
-                        self.assertIn("TELEGRAM_ADS_TOKEN", result.content[0].text)
+                        self.assertIn("TELEGRAM_ADS_TOKENS", result.content[0].text)
                         preview = await session.call_tool("create_ads", {
                             "dry_run": True,
                             "ads": [{

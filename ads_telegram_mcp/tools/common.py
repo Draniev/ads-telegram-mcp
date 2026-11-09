@@ -5,6 +5,8 @@ from typing import Annotated
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
+from ..config import ProfileName
+
 READ_ONLY = ToolAnnotations(
     read_only_hint=True,
     destructive_hint=False,
@@ -34,5 +36,9 @@ WRITE_AD = ToolAnnotations(
 )
 
 AccountID = Annotated[str, Field(min_length=1)]
+Profile = Annotated[
+    ProfileName,
+    Field(description="One profile name or numbered label from list_profiles, as a string."),
+]
 PageSize = Annotated[int, Field(ge=1, le=100)]
 Offset = Annotated[int, Field(ge=0)]
