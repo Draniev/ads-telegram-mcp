@@ -238,6 +238,7 @@ MCP и скачивание по произвольному URL не требу�
 | Пополнение созданного объявления | `increase_ad_budget` | `increaseAdBudget` |
 | Возврат бюджета на баланс аккаунта | `decrease_ad_budget` | `decreaseAdBudget` |
 | Редактирование и снятие паузы | `edit_ad` | `editAd` |
+| Удаление объявления | `delete_ad` | `deleteAd` |
 | Явная отправка на модерацию | `submit_ad_for_review` | `submitAdForReview`, только для статуса `ready_for_review` |
 
 В `create_ads` нет обязательного вызова `submitAdForReview` после создания:

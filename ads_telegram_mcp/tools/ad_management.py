@@ -6,10 +6,14 @@ from mcp.server import MCPServer
 from pydantic import Field
 from telead.errors import APIError
 
-from ..errors import ErrorMessages
+from ..errors import ErrorMessages, OperationError
 from ..execution import TeleAdRunner
 from ..models.ad_management import AdChanges, IdempotencyKey, PositiveMoney
-from ..operations.ad_management import AdChangeResult, change_ad
+from ..operations.ad_management import (
+    AdChangeResult, AdDeletionResult, change_ad,
+    delete_ad as delete_ad_operation,
+    edit_ad as edit_ad_operation,
+)
 from ..profiles import ProfileResolver
 from .common import WRITE_AD, AccountID, Profile
 
@@ -17,7 +21,7 @@ AdID = Annotated[int, Field(strict=True)]
 
 
 def _response(
-    result: AdChangeResult, *, ad_id: int, errors: ErrorMessages,
+    result: AdChangeResult | AdDeletionResult, *, ad_id: int, errors: ErrorMessages,
     idempotency_key: str | None = None,
 ) -> dict[str, Any]:
     """Serialize at the MCP boundary, retaining API fields and safe errors."""
@@ -29,11 +33,13 @@ def _response(
     }
     if idempotency_key is not None:
         response["idempotency_key"] = idempotency_key
-    if result.ad is not None:
+    if isinstance(result, AdDeletionResult):
+        response["deleted"] = result.deleted
+    elif result.ad is not None:
         response["ad"] = result.ad.raw
     if result.error is not None:
         message = errors.describe(result.error)
-        if result.outcome == "unknown":
+        if result.outcome == "unknown" and not isinstance(result.error, OperationError):
             message = "The write outcome is unknown; inspect the ad before further actions."
         response["error"] = {"message": message}
         if isinstance(result.error, APIError):
@@ -140,6 +146,8 @@ def register(server: MCPServer, runner: TeleAdRunner, profiles: ProfileResolver)
         and additional_info cannot be changed once set. Editing a funded ad may
         trigger review. Currency, access and state-dependent limits are API checks.
 
+        A requested text change is checked against the returned ad. A mismatch
+        gives outcome=unknown even when Telegram reports a successful API call.
         Returns account_id, currency, outcome and ad or error. For outcome=unknown,
         inspect get_ads_by_id before deciding whether to repeat the edit.
         return_target includes targeting. With multiple keys, omitted account_id
@@ -147,13 +155,34 @@ def register(server: MCPServer, runner: TeleAdRunner, profiles: ProfileResolver)
         """
         result = await runner.run(
             profiles.resolve(profile, account_id),
-            lambda client: change_ad(
-                client, ad_id=ad_id,
-                change=lambda scope: client.edit_ad(
-                    ad_id, **changes.client_params(), account_id=scope,
-                    return_target=return_target,
-                ),
+            lambda client: edit_ad_operation(
+                client, ad_id=ad_id, changes=changes, return_target=return_target,
             ),
+        )
+        return _response(result, ad_id=ad_id, errors=runner.errors)
+
+    @server.tool(annotations=WRITE_AD)
+    async def delete_ad(
+        ad_id: AdID,
+        account_id: AccountID | None = None,
+        profile: Profile | None = None,
+    ) -> dict[str, Any]:
+        """Delete one existing Telegram Ads advertisement.
+
+        The ad must have been inactive for at least 10 minutes. Telegram Ads
+        checks eligibility. Use the ad ID and account specified by the user.
+        Return remaining funds with decrease_ad_budget before deletion if needed.
+
+        Returns account_id, ad_id, currency, outcome and deleted. deleted=true
+        confirms API success; null means deletion is unconfirmed. An error is
+        included for failed or unknown outcomes. After outcome=unknown, inspect
+        get_ads_by_id before retrying. This method has no idempotency key.
+
+        With multiple keys, omitted account_id uses the selected token owner.
+        """
+        result = await runner.run(
+            profiles.resolve(profile, account_id),
+            lambda client: delete_ad_operation(client, ad_id=ad_id),
         )
         return _response(result, ad_id=ad_id, errors=runner.errors)
 

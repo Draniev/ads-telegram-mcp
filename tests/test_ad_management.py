@@ -12,7 +12,7 @@ from ads_telegram_mcp.config import Settings
 from ads_telegram_mcp.server import create_server
 
 BUDGET_TOOLS = ("increase_ad_budget", "decrease_ad_budget")
-WRITE_METHODS = {"increaseAdBudget", "decreaseAdBudget", "editAd", "submitAdForReview"}
+WRITE_METHODS = {"increaseAdBudget", "decreaseAdBudget", "editAd", "submitAdForReview", "deleteAd"}
 
 
 class AdManagementTests(unittest.TestCase):
@@ -41,10 +41,13 @@ class AdManagementTests(unittest.TestCase):
             }]}
         if method == "getCurrentAccount":
             return {"ok": True, "result": {"account_id": "owner", "currency": "EUR"}}
+        if method == "deleteAd":
+            return {"ok": True, "result": True}
         if method in WRITE_METHODS:
             return {"ok": True, "result": {
                 "ad_id": params["ad_id"], "remaining_budget": 12.5,
                 "status": "in_review", "future_field": {"preserved": True},
+                **({"text": params["text"]} if "text" in params else {}),
             }}
         raise AssertionError("Unexpected HTTP call; real network forbidden")
 
@@ -85,6 +88,7 @@ class AdManagementTests(unittest.TestCase):
             ("decrease_ad_budget", "decreaseAdBudget", {}),
             ("edit_ad", "editAd", {"changes": {"is_paused": False}}),
             ("submit_ad_for_review", "submitAdForReview", {}),
+            ("delete_ad", "deleteAd", {}),
         ):
             for configured, explicit, expected in (
                 ("default-related", None, "default-related"),
@@ -175,7 +179,7 @@ class AdManagementTests(unittest.TestCase):
             {"promote_url": "relative/path"},
         ]
         cases.extend(("edit_ad", {"changes": changes}) for changes in invalid_changes)
-        for tool in (*BUDGET_TOOLS, "edit_ad", "submit_ad_for_review"):
+        for tool in (*BUDGET_TOOLS, "edit_ad", "submit_ad_for_review", "delete_ad"):
             for value in (True, 1.5, "42", [42]):
                 cases.append((tool, {"ad_id": value, **({"changes": {"is_paused": False}}
                                                         if tool == "edit_ad" else {})}))
@@ -201,7 +205,7 @@ class AdManagementTests(unittest.TestCase):
         for tool, extra in (
             ("increase_ad_budget", {}), ("decrease_ad_budget", {}),
             ("edit_ad", {"changes": {"is_paused": False}}),
-            ("submit_ad_for_review", {}),
+            ("submit_ad_for_review", {}), ("delete_ad", {}),
         ):
             with self.subTest(tool=tool):
                 self.requests.clear()
@@ -275,11 +279,66 @@ class AdManagementTests(unittest.TestCase):
             self.assertEqual(set(tools[name].input_schema["required"]), {
                 "ad_id", "amount", "idempotency_key",
             })
-        for name in (*BUDGET_TOOLS, "edit_ad", "submit_ad_for_review"):
+        for name in (*BUDGET_TOOLS, "edit_ad", "submit_ad_for_review", "delete_ad"):
             annotations = tools[name].annotations
             self.assertFalse(annotations.read_only_hint)
             self.assertTrue(annotations.destructive_hint)
             self.assertFalse(annotations.idempotent_hint)
+
+    def test_text_edit_is_verified_against_the_returned_ad(self):
+        result = self.call("edit_ad", changes={"text": "Updated text"})
+        self.assertEqual(result["outcome"], "succeeded")
+        self.assertEqual(result["ad"]["text"], "Updated text")
+        self.assertEqual(self.writes()[0][2]["json"], {
+            "account_id": "default-related", "ad_id": 42,
+            "text": "Updated text", "return_target": False,
+        })
+
+        for old_text in ("Original text", None):
+            with self.subTest(old_text=old_text):
+                self.requests.clear()
+                def route(method, params):
+                    if method == "editAd":
+                        return {"ok": True, "result": {"ad_id": 42, "text": old_text}}
+                    return self.default_route(method, params)
+
+                self.route = route
+                result = self.call("edit_ad", changes={"text": "Updated text"})
+                self.assertEqual(result["outcome"], "unknown")
+                self.assertEqual(result["ad"]["text"], old_text)
+                self.assertIn("text does not match", result["error"]["message"])
+                self.assertEqual(len(self.writes()), 1)
+
+    def test_delete_requires_api_confirmation_and_reports_uncertain_transport_once(self):
+        result = self.call("delete_ad")
+        self.assertEqual(result, {
+            "account_id": "default-related", "ad_id": 42, "currency": "TON",
+            "outcome": "succeeded", "deleted": True,
+        })
+        self.assertEqual(self.writes()[0][2]["json"], {
+            "account_id": "default-related", "ad_id": 42,
+        })
+        self.assertNotIn("Idempotency-Key", self.writes()[0][2]["headers"])
+
+        for failure in ("transport", "server", "false", "missing"):
+            with self.subTest(failure=failure):
+                self.requests.clear()
+                def route(method, params):
+                    if method != "deleteAd":
+                        return self.default_route(method, params)
+                    if failure == "transport":
+                        raise TransportError("offline-test-token private details")
+                    if failure == "server":
+                        return 500, {"ok": False, "error": "SERVER_ERROR"}
+                    return {"ok": True, "result": False if failure == "false" else None}
+
+                self.route = route
+                with patch("telead.client.Client._sleep_backoff"):
+                    result = self.call("delete_ad")
+                self.assertEqual(result["outcome"], "unknown")
+                self.assertIsNone(result["deleted"])
+                self.assertNotIn("offline-test-token", str(result))
+                self.assertEqual(len(self.writes()), 1)
 
 
 if __name__ == "__main__":

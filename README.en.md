@@ -7,8 +7,8 @@ Browse accounts and ads, query statistics, get monthly reports,
 choose targeting options, create and edit ads, fund ads and return unused budget,
 submit them for review and upload media.
 
-The server runs locally over **stdio**. It provides **20 tools**:
-14 for reading data and 6 for changing ads and budgets and uploading media.
+The server runs locally over **stdio**. It provides **21 tools**:
+14 for reading data and 7 for changing ads and budgets and uploading media.
 
 ## Installation
 
@@ -173,6 +173,7 @@ Data access depends on the API token's permissions.
 | `increase_ad_budget` | The result of transferring funds from the account to one ad's budget. |
 | `decrease_ad_budget` | The result of returning funds from an ad's budget to its account balance. |
 | `edit_ad` | The result of changing the supplied fields of one ad, including pause or resume. |
+| `delete_ad` | The result of deleting one ad. |
 | `submit_ad_for_review` | The result of explicitly submitting one ad for moderation. |
 | `upload_media` | The uploaded ad photo, video or website image ID and validated file metadata. |
 
@@ -335,7 +336,11 @@ account balance. Pass a positive amount in the account's currency and an
 inactive for at least 10 minutes and has enough budget remaining.
 
 `edit_ad` accepts a nonempty `changes` object. Only supplied, non-null fields
-are changed; omitted fields and `null` are ignored. To resume an ad:
+are changed; omitted fields and `null` are ignored. To change text, pass
+`changes.text`. The tool checks the requested text against the API's returned
+ad object. A mismatch returns `outcome=unknown`, the actual `ad` and an error
+description. Inspect `get_ads_by_id` before retrying.
+To resume an ad:
 
 ```json
 {"ad_id": 42, "changes": {"is_paused": false}}
@@ -386,6 +391,21 @@ For a budget transfer retry within 24 hours, preserve the original key,
 profile and parameters. Editing and review submission have no key:
 check the current fields or status first. Invalid input and account-lookup
 errors are returned as tool errors before any write.
+
+### Deleting an ad
+
+`delete_ad` accepts `ad_id` and the `profile` and `account_id` selection parameters.
+The ad must have been inactive for at least 10 minutes before deletion.
+Return any remaining budget with `decrease_ad_budget` first if needed.
+
+```json
+{"profile": "personal", "ad_id": 42}
+```
+
+The response contains `account_id`, `ad_id`, `currency`, `outcome` and `deleted`.
+`deleted=true` confirms deletion. For a rejection or an unconfirmed outcome,
+`deleted=null` and `error` describes the reason. After `unknown`, inspect
+`get_ads_by_id` before retrying. The API supports no idempotency key for deletion.
 
 ### Uploading media
 
