@@ -70,8 +70,10 @@ class MediaTests(unittest.TestCase):
     def test_ad_photo_uploads_exact_validated_bytes_to_explicit_account(self):
         path = self.image()
         result = self.call(path, account_id="explicit")
-        self.assertEqual([method for method, _ in self.requests], ["getAccountsById", "uploadAdPhoto"])
-        upload = self.requests[1][1]
+        self.assertEqual([method for method, _ in self.requests], [
+            "getCurrentAccount", "getAccountsById", "uploadAdPhoto",
+        ])
+        upload = self.requests[2][1]
         self.assertEqual(upload["data"], {"account_id": "explicit"})
         self.assertEqual(upload["files"]["file"], (path.name, path.read_bytes(), "image/png"))
         self.assertNotIn("Idempotency-Key", upload["headers"])
@@ -171,7 +173,9 @@ class MediaTests(unittest.TestCase):
         with self.assertRaises(ToolError) as raised:
             self.call(self.image())
         self.assertNotIn("offline-test-token", str(raised.exception))
-        self.assertEqual([method for method, _ in self.requests], ["getAccountsById", "uploadAdPhoto"])
+        self.assertEqual([method for method, _ in self.requests], [
+            "getCurrentAccount", "getAccountsById", "uploadAdPhoto",
+        ])
 
     def test_missing_media_id_does_not_report_success(self):
         self.empty_upload_response = True

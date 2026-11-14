@@ -70,6 +70,8 @@ def register(server: MCPServer, runner: TeleAdRunner, profiles: ProfileResolver)
         For outcome=unknown, preserve the original key; never retry with a new one.
 
         return_target includes targeting in the returned ad.
+        Ordinary and main/agency tokens are supported for the token owner's account.
+        Accessing a related account requires a main/agency token and its account_id.
         With multiple keys, omitted account_id uses the selected token owner.
         """
         result = await runner.run(
@@ -108,6 +110,8 @@ def register(server: MCPServer, runner: TeleAdRunner, profiles: ProfileResolver)
 
         Returns account_id, ad_id, currency, outcome, idempotency_key and ad or
         error. Set return_target to include targeting in the returned ad.
+        Ordinary and main/agency tokens are supported for the token owner's account.
+        Accessing a related account requires a main/agency token and its account_id.
         With multiple keys, omitted account_id uses the selected token owner.
         """
         result = await runner.run(
@@ -150,8 +154,11 @@ def register(server: MCPServer, runner: TeleAdRunner, profiles: ProfileResolver)
         gives outcome=unknown even when Telegram reports a successful API call.
         Returns account_id, currency, outcome and ad or error. For outcome=unknown,
         inspect get_ads_by_id before deciding whether to repeat the edit.
-        return_target includes targeting. With multiple keys, omitted account_id
-        uses the selected token owner.
+        return_target includes targeting.
+
+        Ordinary and main/agency tokens are supported for the token owner's account.
+        Accessing a related account requires a main/agency token and its account_id.
+        With multiple keys, omitted account_id uses the selected token owner.
         """
         result = await runner.run(
             profiles.resolve(profile, account_id),
@@ -178,6 +185,8 @@ def register(server: MCPServer, runner: TeleAdRunner, profiles: ProfileResolver)
         included for failed or unknown outcomes. After outcome=unknown, inspect
         get_ads_by_id before retrying. This method has no idempotency key.
 
+        Ordinary and main/agency tokens are supported for the token owner's account.
+        Accessing a related account requires a main/agency token and its account_id.
         With multiple keys, omitted account_id uses the selected token owner.
         """
         result = await runner.run(
@@ -202,8 +211,11 @@ def register(server: MCPServer, runner: TeleAdRunner, profiles: ProfileResolver)
         Returns account_id, currency, outcome and ad or error. This API method has
         no idempotency key. For outcome=unknown, inspect get_ads_by_id and the ad's
         status before retrying; the first request may already have been applied.
-        return_target includes targeting. With multiple keys, omitted account_id
-        uses the selected token owner.
+        return_target includes targeting.
+
+        Ordinary and main/agency tokens are supported for the token owner's account.
+        Accessing a related account requires a main/agency token and its account_id.
+        With multiple keys, omitted account_id uses the selected token owner.
         """
         result = await runner.run(
             profiles.resolve(profile, account_id),

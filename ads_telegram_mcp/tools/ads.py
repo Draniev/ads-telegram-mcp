@@ -38,6 +38,8 @@ def register(server: MCPServer, runner: TeleAdRunner, profiles: ProfileResolver)
         Unexpected client failures also stop remaining writes.
 
         dry_run makes no API calls and does not check access, budget or moderation.
+        Ordinary and main/agency tokens are supported for the token owner's account.
+        Accessing a related account requires a main/agency token and its account_id.
         With multiple keys, omitted account_id uses the selected token owner.
         """
         connection = profiles.resolve(profile, account_id, require_token=not dry_run)
@@ -94,6 +96,8 @@ def register(server: MCPServer, runner: TeleAdRunner, profiles: ProfileResolver)
         This tool does not load additional pages automatically.
         Set return_target to include targeting settings.
 
+        Ordinary and main/agency tokens are supported for the token owner's account.
+        Accessing a related account requires a main/agency token and its account_id.
         With multiple keys, omitted account_id uses the selected token owner.
         """
         page = await runner.run(
@@ -116,6 +120,8 @@ def register(server: MCPServer, runner: TeleAdRunner, profiles: ProfileResolver)
         Accepts 1 to 100 IDs. Ad IDs are unique within an account.
         Set return_target to include targeting settings.
 
+        Ordinary and main/agency tokens are supported for the token owner's account.
+        Accessing a related account requires a main/agency token and its account_id.
         With multiple keys, omitted account_id uses the selected token owner.
         """
         ads = await runner.run(

@@ -30,6 +30,8 @@ def register(server: MCPServer, runner: TeleAdRunner, profiles: ProfileResolver)
         and validated media metadata. Reuse the ID only in the same account.
         Upload retries may create a new media ID; no idempotency key is available.
 
+        Ordinary and main/agency tokens are supported for the token owner's account.
+        Accessing a related account requires a main/agency token and its account_id.
         With multiple keys, omitted account_id uses the selected token owner.
         """
         result = await runner.run(

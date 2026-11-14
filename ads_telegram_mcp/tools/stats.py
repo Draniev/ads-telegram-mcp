@@ -44,6 +44,8 @@ def register(server: MCPServer, runner: TeleAdRunner, profiles: ProfileResolver)
         Totals are null when no data is available. Check complete and errors
         before treating the result as complete.
 
+        Ordinary and main/agency tokens are supported for the token owner's account.
+        Accessing a related account requires a main/agency token and its account_id.
         With multiple keys, omitted account_id uses the selected token owner.
         """
         validate_period(from_time, to_time, interval)
@@ -96,6 +98,8 @@ def register(server: MCPServer, runner: TeleAdRunner, profiles: ProfileResolver)
         The API rounds bounds to interval starts; at most 1000 intervals
         are allowed. Monetary values use the returned currency.
 
+        Ordinary and main/agency tokens are supported for the token owner's account.
+        Accessing a related account requires a main/agency token and its account_id.
         With multiple keys, omitted account_id uses the selected token owner.
         """
         validate_period(from_time, to_time, interval)
@@ -119,6 +123,8 @@ def register(server: MCPServer, runner: TeleAdRunner, profiles: ProfileResolver)
         The API rounds bounds to interval starts; at most 1000 intervals
         are allowed. The ad ID is scoped to the selected account.
 
+        Ordinary and main/agency tokens are supported for the token owner's account.
+        Accessing a related account requires a main/agency token and its account_id.
         With multiple keys, omitted account_id uses the selected token owner.
         """
         validate_period(from_time, to_time, interval)
@@ -142,6 +148,8 @@ def register(server: MCPServer, runner: TeleAdRunner, profiles: ProfileResolver)
         Returns a report of active ads for the given year and month.
         Monetary values use each item's currency.
 
+        Ordinary and main/agency tokens are supported for the token owner's account.
+        Accessing a related account requires a main/agency token and its account_id.
         With multiple keys, omitted account_id uses the selected token owner.
         """
         report = await runner.run(

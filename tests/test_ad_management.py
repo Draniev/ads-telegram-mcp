@@ -68,7 +68,9 @@ class AdManagementTests(unittest.TestCase):
             with self.subTest(tool=tool):
                 self.requests.clear()
                 result = self.call(tool, return_target=True)
-                self.assertEqual([item[1] for item in self.requests], ["getAccountsById", method])
+                self.assertEqual([item[1] for item in self.requests], [
+                    "getCurrentAccount", "getAccountsById", method,
+                ])
                 self.assertEqual(len({id(item[0]) for item in self.requests}), 1)
                 write = self.writes()[0][2]
                 self.assertEqual(write["json"], {
@@ -94,6 +96,7 @@ class AdManagementTests(unittest.TestCase):
                 ("default-related", None, "default-related"),
                 ("default-related", "explicit", "explicit"),
                 (None, None, "owner"),
+                ("default-related", "owner", "owner"),
             ):
                 with self.subTest(tool=tool, configured=configured, explicit=explicit):
                     self.requests.clear()
@@ -106,6 +109,10 @@ class AdManagementTests(unittest.TestCase):
                     self.assertEqual(self.writes()[0][1], method)
                     self.assertEqual(self.writes()[0][2]["json"]["account_id"], expected)
                     self.assertEqual(len(self.writes()), 1)
+                    if expected == "owner":
+                        self.assertEqual([item[1] for item in self.requests], [
+                            "getCurrentAccount", method,
+                        ])
 
     def test_partial_edit_only_sends_supplied_fields_including_false_zero_and_empty(self):
         changes = {
@@ -151,7 +158,7 @@ class AdManagementTests(unittest.TestCase):
     def test_review_is_one_write_without_an_extra_status_read_or_idempotency_key(self):
         result = self.call("submit_ad_for_review", return_target=True)
         self.assertEqual([item[1] for item in self.requests], [
-            "getAccountsById", "submitAdForReview",
+            "getCurrentAccount", "getAccountsById", "submitAdForReview",
         ])
         self.assertEqual(self.writes()[0][2]["json"], {
             "account_id": "default-related", "ad_id": 42, "return_target": True,
@@ -308,6 +315,22 @@ class AdManagementTests(unittest.TestCase):
                 self.assertEqual(result["ad"]["text"], old_text)
                 self.assertIn("text does not match", result["error"]["message"])
                 self.assertEqual(len(self.writes()), 1)
+
+    def test_explicit_token_owner_top_up_does_not_require_agency_account(self):
+        def route(method, params):
+            if method == "getAccountsById":
+                return {"ok": False, "error": "MAIN_ACCOUNT_REQUIRED"}
+            return self.default_route(method, params)
+
+        self.route = route
+        for tool in BUDGET_TOOLS:
+            with self.subTest(tool=tool):
+                self.requests.clear()
+                result = self.call(tool, account_id="owner")
+                self.assertEqual(result["outcome"], "succeeded")
+                self.assertEqual(result["account_id"], "owner")
+                self.assertEqual(result["currency"], "EUR")
+                self.assertNotIn("getAccountsById", [item[1] for item in self.requests])
 
     def test_delete_requires_api_confirmation_and_reports_uncertain_transport_once(self):
         result = self.call("delete_ad")

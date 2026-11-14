@@ -9,9 +9,8 @@ from ..errors import OperationError
 def resolve_account(client: Client) -> Account:
     """Look up the scoped account or token owner before a write."""
     scope = client.account_id
-    if scope is None:
-        account = client.get_current_account()
-    else:
+    account = client.get_current_account()
+    if scope is not None and scope != account.account_id:
         accounts = client.get_accounts_by_id([scope])
         account = next((item for item in accounts if item.account_id == scope), None)
         if account is None:

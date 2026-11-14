@@ -26,6 +26,7 @@ def register(server: MCPServer, runner: TeleAdRunner, profiles: ProfileResolver)
     ) -> dict[str, Any]:
         """Get a full catalogue of targeting languages, topics or countries.
 
+        Available to ordinary advertisers and main/agency accounts.
         These three catalogues return every option without search or pagination.
         Returns catalog, options and total_count, with no next-page cursor.
         For locations, use get_target_locations separately when needed.
@@ -56,6 +57,7 @@ def register(server: MCPServer, runner: TeleAdRunner, profiles: ProfileResolver)
     ) -> dict[str, Any]:
         """Search targeting locations within a country when needed.
 
+        Available to ordinary advertisers and main/agency accounts.
         country_code is a two-letter country code; query must be nonblank.
         All pages of this search are retrieved automatically in one call.
         Returns locations and total_count, with no next-page cursor.
@@ -82,6 +84,7 @@ def register(server: MCPServer, runner: TeleAdRunner, profiles: ProfileResolver)
     ) -> dict[str, Any]:
         """Resolve a channel for targeting by @username or numeric ID.
 
+        Available to ordinary advertisers and main/agency accounts.
         Returns channel_id and, when available, title, username and photo_url.
         Numeric IDs require prior username resolution by the same account.
         Set for_excluding=true when resolving a channel for exclusion.
@@ -100,6 +103,7 @@ def register(server: MCPServer, runner: TeleAdRunner, profiles: ProfileResolver)
     async def get_target_bot(bot_id: PeerRef, profile: Profile | None = None) -> dict[str, Any]:
         """Resolve a bot for targeting by @username or numeric ID.
 
+        Available to ordinary advertisers and main/agency accounts.
         Returns bot_id and, when available, title, username and photo_url.
         Numeric IDs require prior username resolution by the same account.
 

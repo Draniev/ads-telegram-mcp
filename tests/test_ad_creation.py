@@ -68,7 +68,7 @@ class CreationTests(unittest.TestCase):
     def test_defaults_order_duplicate_keys_and_actual_api_values(self):
         result = self.call([new_ad(), new_ad()])
         self.assertEqual([call[1] for call in self.requests],
-                         ["getAccountsById", "createAd", "createAd"])
+                         ["getCurrentAccount", "getAccountsById", "createAd", "createAd"])
         self.assertEqual(len({id(call[0]) for call in self.requests}), 1)
         self.assertEqual(result["account_id"], "default-related")
         self.assertTrue(result["complete"])
@@ -84,7 +84,7 @@ class CreationTests(unittest.TestCase):
 
     def test_account_override_and_token_owner(self):
         self.call(account_id="explicit")
-        self.assertEqual(self.requests[0][2]["json"], {"account_ids": ["explicit"]})
+        self.assertEqual(self.requests[1][2]["json"], {"account_ids": ["explicit"]})
         self.assertEqual(self.writes()[0]["json"]["account_id"], "explicit")
         self.requests.clear()
         self.server = create_server(Settings(token="offline-test-token", account_id=None, _env_file=None))

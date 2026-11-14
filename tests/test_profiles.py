@@ -23,7 +23,7 @@ class ProfileRoutingTests(unittest.TestCase):
             self.requests.append((method, auth, params))
             if method == "getAccountsById":
                 result = [{"account_id": params["account_ids"][0], "currency": "TON"}]
-            elif self.error_code is not None:
+            elif self.error_code is not None and method != "getCurrentAccount":
                 body = {"ok": False, "error": self.error_code}
                 return Mock(status_code=400, headers={}, json=lambda: body)
             elif method == "getCurrentAccount":
@@ -89,6 +89,7 @@ class ProfileRoutingTests(unittest.TestCase):
         self.assertEqual(result["outcome"], "succeeded")
         self.assertEqual(result["account_id"], "legacy-related")
         self.assertEqual(self.requests, [
+            ("getCurrentAccount", "Bearer agency-secret", {}),
             ("getAccountsById", "Bearer agency-secret", {"account_ids": ["legacy-related"]}),
             ("increaseAdBudget", "Bearer agency-secret", {
                 "account_id": "legacy-related", "ad_id": 42, "amount": 5,

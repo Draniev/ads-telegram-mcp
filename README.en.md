@@ -79,9 +79,8 @@ under that key is selected in this order:
 2. `TELEGRAM_ADS_ACCOUNT_ID`, if only one token is configured.
 3. The account that owns the token.
 
-`get_current_account` always returns the token owner's account.
-`list_related_accounts` retrieves the token owner's related accounts,
-while `get_accounts_by_id` uses the supplied list of IDs.
+`get_current_account` with the selected `profile` always returns the token owner's
+account.
 To access the token owner's account when a default account is configured,
 pass its ID explicitly.
 
@@ -89,6 +88,28 @@ Targeting catalogues and channel/bot lookups accept `profile`, but do not
 accept `account_id`: their scope is determined by the selected profile's key.
 Use the same profile and account for related operations, such as uploading
 media and creating an ad, or retrying a budget top-up.
+
+### Tool availability by account type
+
+| Tools | Ordinary advertiser account | Main agency account |
+| --- | --- | --- |
+| `list_profiles` | Local profile list, no API call | Same |
+| `get_current_account` | Token owner's account | Token owner's account |
+| `list_related_accounts`, `get_accounts_by_id` | Require a main agency account: `MAIN_ACCOUNT_REQUIRED`, including a lookup of the owner's own ID | Related accounts and their details |
+| `list_ads`, `get_ads_by_id`, `create_ads`, `edit_ad`, `delete_ad`, `submit_ad_for_review` | Own account's ads | Own or related account |
+| `increase_ad_budget`, `decrease_ad_budget`, `upload_media` | Own account | Own or related account |
+| `get_account_stats`, `get_ad_stats`, `get_ads_stats`, `get_account_report` | Own account | Own or related account |
+| `get_targeting_options`, `get_target_locations`, `get_target_channel`, `get_target_bot` | Selected token's scope | Selected token's scope |
+
+To access a related account, pass its `account_id` with the main agency account's
+`profile`. Each operation is also subject to API permissions and account or ad
+state.
+
+`MAIN_ACCOUNT_REQUIRED` from an agency-only method means the API rejected the
+call. This differs from a successful response with an empty related-account list.
+The error does not determine whether statistics or ad management are available.
+Ad budget top-ups and returns are available to ordinary advertisers: funds move
+between an ad and its own account balance.
 
 ## Connecting to an MCP client
 
